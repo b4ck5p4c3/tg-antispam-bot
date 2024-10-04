@@ -37,6 +37,7 @@ URL = os.getenv("TELEGRAM_API_URL")
 PORT = int(os.getenv("WEBHOOK_PORT", 8000))
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 DATA_PATH = os.getenv("DATA_PATH", "data")
+ADMINS = [int(admin_id) for admin_id in os.getenv("ADMINS").split(",")] #TODO: replace to swinca api request when Ehor is done with it
 
 TRUSTED_USERS_DB = JsonDB("{}/trusted_users.json".format(DATA_PATH))
 TRUSTED_USERS = TRUSTED_USERS_DB.read_or_default([])
@@ -71,8 +72,7 @@ async def check_message_for_spam(update: Update, context: CallbackContext) -> No
 
 def admin_command(func):
     async def wrapper(update: Update, context: CallbackContext) -> None:
-        admins = await context.bot.get_chat_administrators(chat_id=update.message.chat_id)
-        if not any(admin.user.id == update.message.from_user.id for admin in admins):
+        if update.message.from_user.id not in ADMINS:
             await context.bot.send_message(chat_id=update.message.chat_id, text="You are not an admin")
             return
         return await func(update, context)
