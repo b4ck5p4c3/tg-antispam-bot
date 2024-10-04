@@ -29,7 +29,6 @@ from telegram.ext import (
 )
 
 from modules.ModulesFactory import ModulesFactory
-from util.AdminProvider import AdminProvider
 from util.JsonDB import JsonDB
 from util.LoggerUtil import LoggerUtil
 
@@ -45,7 +44,6 @@ TRUSTED_USERS = TRUSTED_USERS_DB.read_or_default([])
 CONFIG_DB = JsonDB("{}/config.json".format(DATA_PATH))
 CONFIG = CONFIG_DB.read_or_default({"chats_to_moderate": []})
 
-ADMINS = AdminProvider()
 
 
 logger = LoggerUtil.get_logger("BOT")
@@ -73,7 +71,8 @@ async def check_message_for_spam(update: Update, context: CallbackContext) -> No
 
 def admin_command(func):
     async def wrapper(update: Update, context: CallbackContext) -> None:
-        if not ADMINS.is_admin(update.message.from_user.id):
+        admins = await context.bot.get_chat_administrators(chat_id=update.message.chat_id)
+        if not any(admin.user.id == update.message.from_user.id for admin in admins):
             await context.bot.send_message(chat_id=update.message.chat_id, text="You are not an admin")
             return
         return await func(update, context)
