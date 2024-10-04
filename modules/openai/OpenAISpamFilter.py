@@ -2,10 +2,8 @@ import os
 import re
 from logging import Logger
 
-from telegram import Update
-
-from modules.HTTPJsonSpamFilter import HTTPJsonSpamFilter
 from openai import OpenAI
+from telegram import Update
 
 from modules.SpamFilter import SpamFilter
 
