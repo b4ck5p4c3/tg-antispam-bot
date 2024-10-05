@@ -2,8 +2,9 @@ import os
 import re
 from logging import Logger
 
+import httpx
 from openai import OpenAI
-from telegram import Update
+from telegram import Update, Message
 
 from modules.SpamFilter import SpamFilter
 
@@ -13,13 +14,14 @@ class OpenAISpamFilter(SpamFilter):
 
     def __init__(self, a_logger: Logger):
         super().__init__(a_logger)
-        token = os.getenv("OPENAI_TOKEN")
+        token = os.getenv("OPENAI_API_KEY")
+        proxy_url = os.environ.get("OPENAI_PROXY_URL")
         if not token:
             self.logger.warning("OPENAI_TOKEN token is not set. Module is disabled")
             self.openai_client = None
         else:
-            self.openai_client = OpenAI(api_key=token)
-
+            self.openai_client = OpenAI() if proxy_url is None or proxy_url == "" else OpenAI(
+                http_client=httpx.Client(proxy=proxy_url))
     def is_spam(self, update: Update) -> bool:
         if not self.openai_client:
             return False
@@ -80,3 +82,4 @@ class OpenAISpamFilter(SpamFilter):
     def get_priority(self) -> int:
         """Returns the priority of this filter. Higher == run's first"""
         return 10000
+
