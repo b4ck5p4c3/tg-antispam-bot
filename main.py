@@ -48,6 +48,7 @@ CONFIG = CONFIG_DB.read_or_default({"chats_to_moderate": []})
 
 
 logger = LoggerUtil.get_logger("BOT")
+logger.setLevel("DEBUG")
 
 filters_by_priority = ModulesFactory.get_all_mapped_by_priority(logger)
 
