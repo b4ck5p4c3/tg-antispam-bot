@@ -52,22 +52,25 @@ logger = LoggerUtil.get_logger("BOT")
 filters_by_priority = ModulesFactory.get_all_mapped_by_priority(logger)
 
 async def check_message_for_spam(update: Update, context: CallbackContext) -> None:
-    if update.message.from_user.id in TRUSTED_USERS or update.message.chat_id not in CONFIG["chats_to_moderate"]:
-        return
-    message = update.message
-    logger.info("Received message: %s", message.text)
-    for priority in filters_by_priority.keys():
-        for a_filter in filters_by_priority[priority]:
-            is_spam = a_filter.is_spam(update)
-            if is_spam:
-                logger.info("Message from user %d detected as spam by %s. Restricting..", message.from_user.id, a_filter.__class__.__name__)
-                await context.bot.delete_message(chat_id=message.chat_id, message_id=message.message_id)
-                await restrict_user(message.from_user, message.chat_id, "Detected as spam by {}".format(a_filter.__class__.__name__), context)
-                context.job_queue.run_once(ban_message_author, 60*10, data=message)
-                return
-    logger.info("Message is not spam")
-    TRUSTED_USERS.append(message.from_user.id)
-    TRUSTED_USERS_DB.write(TRUSTED_USERS)
+    try:
+        if update.message.from_user.id in TRUSTED_USERS or update.message.chat_id not in CONFIG["chats_to_moderate"]:
+            return
+        message = update.message
+        logger.info("Received message: %s", message.text)
+        for priority in filters_by_priority.keys():
+            for a_filter in filters_by_priority[priority]:
+                is_spam = a_filter.is_spam(update)
+                if is_spam:
+                    logger.info("Message from user %d detected as spam by %s. Restricting..", message.from_user.id, a_filter.__class__.__name__)
+                    await context.bot.delete_message(chat_id=message.chat_id, message_id=message.message_id)
+                    await restrict_user(message.from_user, message.chat_id, "Detected as spam by {}".format(a_filter.__class__.__name__), context)
+                    context.job_queue.run_once(ban_message_author, 60*10, data=message)
+                    return
+        logger.info("Message is not spam")
+        TRUSTED_USERS.append(message.from_user.id)
+        TRUSTED_USERS_DB.write(TRUSTED_USERS)
+    except Exception as e:
+        logger.error("Error while checking message for spam: %s", e)
 
 
 def admin_command(func):
@@ -119,7 +122,7 @@ async def main() -> None:
 
     application.add_handler(CommandHandler("moderate", add_chat_to_moderate))
 
-    application.add_handler(MessageHandler(filters.TEXT, check_message_for_spam))
+    application.add_handler(MessageHandler(filters.ALL, check_message_for_spam))
 
     await application.bot.set_webhook(url=f"{URL}/telegram", allowed_updates=Update.ALL_TYPES)
     flask_app = Flask(__name__)
