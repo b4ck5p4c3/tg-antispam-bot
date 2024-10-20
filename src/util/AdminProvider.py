@@ -28,16 +28,30 @@ class AdminProvider:
                                     )
 
     def is_admin(self, user_id: int) -> bool:
-        if self.admins is None or self._cache_outdated():
-            response = self.session.get(self.SWYNCA_API_URL+"api/members")
-            if response.status_code!=200:
-                self.logger.error("Swynca returned %d status code, body: %s", response.status_code, response.text)
-            else:
-                admins = response.json()
-                self.logger.debug("Got admins: %s", admins)
-                self.admins = [int(admin['telegramMetadata']['telegramId']) for admin in admins]
-                return user_id in self.admins
+        if self.__required_cache_update():
+            self.admins = self.__request_admins()
+            return user_id in self.admins
+        else:
+            return user_id in self.admins
 
+    def __request_admins(self) -> list[int]:
+        response = self.session.get(self.SWYNCA_API_URL+"api/members")
+        if response.status_code!=200:
+            self.logger.error("Swynca returned %d status code, body: %s", response.status_code, response.text)
+        else:
+            admins = response.json()
+            self.admins = [int(admin['telegramMetadata']['telegramId']) for admin in admins]
+            self.logger.debug("Admins: %s", self.admins)
+            return self.admins
+
+    def __required_cache_update(self) -> bool:
+        if self.admins is None:
+            self.logger.debug("Cache is empty, updating")
+            return True
+        elif self._cache_outdated():
+            self.logger.debug("Cache is outdated, updating")
+            return True
     def _cache_outdated(self):
         self.__CACHE_UPDATED_AT = time.time()
+        self.logger.debug("Cache updated at %d", self.__CACHE_UPDATED_AT)
         return False
