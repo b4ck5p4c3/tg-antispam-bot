@@ -35,10 +35,9 @@ class AdminProvider:
             else:
                 admins = response.json()
                 self.logger.debug("Got admins: %s", admins)
-                for admin in admins:
-                    if int(admin['telegramMetadata']['telegramId']) == user_id:
-                        return True
-                return False
+                self.admins = [int(admin['telegramMetadata']['telegramId']) for admin in admins]
+                return user_id in self.admins
 
     def _cache_outdated(self):
-        return self.__CACHE_UPDATED_AT + self.CACHE_LIFETIME_SEC > time.time()
+        self.__CACHE_UPDATED_AT = time.time()
+        return False
