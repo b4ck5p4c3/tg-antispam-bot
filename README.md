@@ -22,4 +22,4 @@ The following environment variables are used to configure the bot:
 - `SWYNCA_API_KEY`: API key for accessing Swynca
 ## Contribution
 
-For guidelines on how to contribute to this project, please see the [CONTRIBUTE.md](CONTRIBUTE.md) file.
+For guidelines on how to contribute to this project, please see the [CONTRIBUTING.md](CONTRIBUTING) file.
