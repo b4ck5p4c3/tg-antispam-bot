@@ -49,12 +49,12 @@ class SpamFilter:
     def _is_message_should_be_ignored(self, update: EnrichedUpdate) -> bool:
         """Checks if the message should be ignored."""
         conditions = [
+            (update.message is None,
+             "Message is not text, skipping spam check"),
             (self.config.is_user_trusted(update.message.from_user.id), 
              f"User {update.message.from_user.id} is trusted, skipping spam check"),
             (not self.config.is_chat_moderated(update.message.chat_id), 
              f"Chat {update.message.chat_id} is not moderated, skipping spam check"),
-            (update.message.text is None, 
-             "Message is not text, skipping spam check"),
             (self.config.is_admin(update.message.from_user.id), 
              f"User {update.message.from_user.id} is admin, skipping spam check"),
         ]
