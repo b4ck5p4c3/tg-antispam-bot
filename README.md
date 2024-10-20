@@ -1,4 +1,3 @@
-# bksp-antispam-bot
 # B4CKSP4CE Telegram Antispam Bot
 
 ## Description
