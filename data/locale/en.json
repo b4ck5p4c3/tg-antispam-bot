@@ -1,0 +1,8 @@
+{
+  "openai_user_ban_notification": "[{user.first_name}](tg://user?id={user.id}) You have been restricted. Spamness: {spamness}%. \n\n If you think this is a mistake, please contact the admin. Your account will be banned in {ban_delay_min} minutes.",
+  "chat_added_to_moderate": "Chat {chat_id} added to moderable",
+  "chat_already_moderated": "Chat {chat_id} is already moderated",
+  "user_not_admin": "You are not an admin",
+  "chat_removed_from_moderate": "Chat {chat_id} removed from moderable",
+    "chat_not_moderated": "Chat {chat_id} is not moderated"
+}
