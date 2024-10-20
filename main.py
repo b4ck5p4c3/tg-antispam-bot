@@ -18,7 +18,6 @@ from src.util.config.JsonModelRepo import JsonModelRepo
 URL = os.getenv("TELEGRAM_API_URL")
 PORT = int(os.getenv("WEBHOOK_PORT", 8000))
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-DATA_PATH = os.getenv("DATA_PATH", "data")
 CONFIG_FOLDER_PATH = os.getenv("CONFIG_FOLDER_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
 WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "0.0.0.0")
 
@@ -39,7 +38,7 @@ async def main():
     config: Config = Config.load_from_file(admin_provider, config_repo)
     openai_config_path = os.path.join(CONFIG_FOLDER_PATH, "openai_config.json")
     openai_config: OpenAIFilterConfig = JsonModelRepo(openai_config_path).load(OpenAIFilterConfig, OpenAIFilterConfig())
-    locale_folder_path = os.path.join(DATA_PATH, "locale")
+    locale_folder_path = os.path.join(CONFIG_FOLDER_PATH, "locale")
     locale_factory = LocaleFactory(locale_folder_path)
 
     antispam_filters = FilterFactory.get_default_chain(logger, config, openai_config)
