@@ -53,6 +53,6 @@ class AdminProvider:
             self.logger.debug("Cache is outdated, updating")
             return True
     def _cache_outdated(self):
-        cache_lifetime = time.time() + self.__CACHE_UPDATED_AT
+        cache_lifetime = time.time() - self.__CACHE_UPDATED_AT
         self.logger.debug(f"Cache lifetime: {cache_lifetime}")
         return cache_lifetime > self.CACHE_LIFETIME_SEC
