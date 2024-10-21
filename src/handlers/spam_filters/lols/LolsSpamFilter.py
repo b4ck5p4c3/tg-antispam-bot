@@ -16,5 +16,5 @@ class LolsSpamFilter(HTTPJsonSpamFilter):
         account_status = self.try_send_request(request_url, [200])
         if not account_status:
             return False
-        self.logger.info(f"[{self._name}] User {message_author_id}: offenses {account_status['offenses']}, spam_factor {account_status['spam_factor']}")
+        self.logger.info(f"[{self._name}] User {message_author_id}: {account_status}")
         return account_status['banned']
