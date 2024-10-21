@@ -41,6 +41,7 @@ class AdminProvider:
         else:
             admins = response.json()
             self.admins = [int(admin['telegramMetadata']['telegramId']) for admin in admins]
+            self.__CACHE_UPDATED_AT = time.time()
             self.logger.debug("Admins: %s", self.admins)
             return self.admins
 
@@ -52,6 +53,6 @@ class AdminProvider:
             self.logger.debug("Cache is outdated, updating")
             return True
     def _cache_outdated(self):
-        self.__CACHE_UPDATED_AT = time.time()
-        self.logger.debug("Cache updated at %d", self.__CACHE_UPDATED_AT)
-        return False
+        cache_lifetime = time.time() + self.__CACHE_UPDATED_AT
+        self.logger.debug(f"Cache lifetime: {cache_lifetime}")
+        return cache_lifetime > self.CACHE_LIFETIME_SEC
