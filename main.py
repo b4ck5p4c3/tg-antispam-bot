@@ -47,7 +47,7 @@ async def main():
     telegram_application = get_telegram_application(TOKEN, URL)
     telegram_application.add_handler(CommandHandler("moderate", with_enriched_update(configuration_commands_handler.handle_add_moderable_chat)))
     telegram_application.add_handler(CommandHandler("stop_moderate", with_enriched_update(configuration_commands_handler.handle_remove_moderable_chat)))
-    telegram_application.add_handler(MessageHandler(filters.TEXT, with_enriched_update(antispam_filters.apply)))
+    telegram_application.add_handler(MessageHandler(filters.ALL, with_enriched_update(antispam_filters.apply)))
     await telegram_application.bot.set_webhook(url=f"{WEBHOOK_HOST}/telegram", allowed_updates=Update.MESSAGE)
 
 
