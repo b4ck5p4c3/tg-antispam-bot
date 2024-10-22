@@ -55,8 +55,8 @@ class SpamFilter:
              f"User {update.message.from_user.id} is trusted, skipping spam check"),
             (not self.config.is_chat_moderated(update.message.chat_id), 
              f"Chat {update.message.chat_id} is not moderated, skipping spam check"),
-            (self.config.is_admin(update.message.from_user.id), 
-             f"User {update.message.from_user.id} is admin, skipping spam check"),
+            # (self.config.is_admin(update.message.from_user.id),
+            #  f"User {update.message.from_user.id} is admin, skipping spam check"),
         ]
 
         for condition, message in conditions:
@@ -79,7 +79,7 @@ class SpamFilter:
     @final
     async def apply(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Applies the spam filter to the incoming message."""
-        if self._is_message_should_be_ignored(update):
+        if self._is_message_should_be_ignored(update) :
             return
         if self._is_spam(update, context):
             await self._on_spam(update, context)
