@@ -36,11 +36,15 @@ class AdminProvider:
 
     def __request_admins(self) -> list[int]:
         response = self.session.get(self.SWYNCA_API_URL+"api/members")
-        if response.status_code!=200:
+        if response.status_code != 200:
             self.logger.error("Swynca returned %d status code, body: %s", response.status_code, response.text)
+            return []
         else:
             admins = response.json()
-            self.admins = [int(admin['telegramMetadata']['telegramId']) for admin in admins]
+            self.admins = [
+                int(admin['telegramMetadata']['telegramId']) for admin in admins 
+                if 'telegramMetadata' in admin and 'telegramId' in admin['telegramMetadata']
+            ]
             self.__CACHE_UPDATED_AT = time.time()
             self.logger.debug("Admins: %s", self.admins)
             return self.admins
@@ -52,6 +56,7 @@ class AdminProvider:
         elif self._cache_outdated():
             self.logger.debug("Cache is outdated, updating")
             return True
+
     def _cache_outdated(self):
         cache_lifetime = time.time() - self.__CACHE_UPDATED_AT
         self.logger.debug(f"Cache lifetime: {cache_lifetime}")
