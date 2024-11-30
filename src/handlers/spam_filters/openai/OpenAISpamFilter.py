@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from telegram import ChatPermissions
 from telegram.ext import CallbackContext
 
-from src.handlers.spam_filters.SpamFilter import SpamFilter
+from src.handlers.spam_filters.SpamFilter import SpamFilter, extract_message_text
 from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.util.config.Config import Config
 
@@ -82,7 +82,7 @@ class OpenAISpamFilter(SpamFilter):
         if not self.openai_client:
             return False
         """Checks if message is spam. Returns true if message is spam"""
-        response = self._openai_check_message(update.message.text)
+        response = self._openai_check_message(extract_message_text(update))
         answer_text = response.choices[0].message.content
         spamness_percent = self._find_spamness_percent(answer_text)
         if spamness_percent == self._NOT_FOUND:

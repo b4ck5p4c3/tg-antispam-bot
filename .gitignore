@@ -4,3 +4,4 @@
 local.env
 data/config.json
 data/openai_config.json
+.env

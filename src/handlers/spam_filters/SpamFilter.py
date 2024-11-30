@@ -8,6 +8,14 @@ from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.util.config.Config import Config
 
 
+def extract_message_text(update: EnrichedUpdate) -> Optional[str]:
+    if update.message.text is not None:
+        return update.message.text
+    elif update.message.caption is not None:
+        return update.message.caption
+    return None
+
+
 class SpamFilter:
 
     _name = "Generic Filter"
@@ -49,14 +57,14 @@ class SpamFilter:
     def _is_message_should_be_ignored(self, update: EnrichedUpdate) -> bool:
         """Checks if the message should be ignored."""
         conditions = [
-            (update.message is None,
+            (extract_message_text(update) is None,
              "Message is not text, skipping spam check"),
             (self.config.is_user_trusted(update.message.from_user.id), 
              f"User {update.message.from_user.id} is trusted, skipping spam check"),
             (not self.config.is_chat_moderated(update.message.chat_id), 
              f"Chat {update.message.chat_id} is not moderated, skipping spam check"),
-            # (self.config.is_admin(update.message.from_user.id),
-            #  f"User {update.message.from_user.id} is admin, skipping spam check"),
+            (self.config.is_admin(update.message.from_user.id),
+             f"User {update.message.from_user.id} is admin, skipping spam check"),
         ]
 
         for condition, message in conditions:
