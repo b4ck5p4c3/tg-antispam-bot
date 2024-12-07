@@ -9,6 +9,8 @@ from src.util.config.Config import Config
 
 
 def extract_message_text(update: EnrichedUpdate) -> Optional[str]:
+    if update.message is None:
+        return None
     if update.message.text is not None:
         return update.message.text
     elif update.message.caption is not None:
