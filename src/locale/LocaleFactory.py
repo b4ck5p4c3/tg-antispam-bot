@@ -27,3 +27,6 @@ class LocaleFactory:
             locale_name = self.__DEFAULT_LOCALE
         with open(f"{self.locale_folder_path}/en.json", 'r') as file: # TODO: Fix
             return file.read()
+
+    def get_default_locale(self) -> Locale:
+        return self.get_locale(self.__DEFAULT_LOCALE)

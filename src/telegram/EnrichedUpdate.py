@@ -36,9 +36,12 @@ class EnrichedUpdate(Update):
 
     @staticmethod
     def from_update(update: Update, locale_factory: LocaleFactory) -> 'EnrichedUpdate':
-        locale = locale_factory.get_locale_for_user(update.effective_user)
+        if update.effective_user is not None:
+            locale = locale_factory.get_locale_for_user(update.effective_user)
+        else:
+            locale = locale_factory.get_default_locale()
         return EnrichedUpdate(update, locale)
-    
+        
     @property
     def locale(self):
         return self._locale
