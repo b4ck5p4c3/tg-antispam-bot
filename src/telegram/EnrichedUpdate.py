@@ -41,7 +41,7 @@ class EnrichedUpdate(Update):
         else:
             locale = locale_factory.get_default_locale()
         return EnrichedUpdate(update, locale)
-        
+
     @property
     def locale(self):
         return self._locale

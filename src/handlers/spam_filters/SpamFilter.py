@@ -1,6 +1,8 @@
+import asyncio
 from logging import Logger
 from typing import Optional
 
+from requests import JSONDecodeError
 from telegram import Message
 from telegram.ext import CallbackContext
 
@@ -21,6 +23,7 @@ def extract_message_text(update: EnrichedUpdate) -> Optional[str]:
 class SpamFilter:
 
     _name = "Generic Filter"
+    __telegram_api_request_retry_count = 3
 
     def __init__(self, logger: Logger, config: Config, next_filter: Optional['SpamFilter'] = None):
         self.config = config
@@ -42,7 +45,7 @@ class SpamFilter:
 
     async def _try_remove_message(self, context: CallbackContext, message: Message) -> None:
         try:
-            await context.bot.delete_message(chat_id=message.chat_id, message_id=message.message_id)
+            await self._execute_telegram_api_request(context.bot.delete_message, chat_id=message.chat_id, message_id=message.message_id)
         except Exception as e:
             self.logger.warning(f"[{self._name}] Failed to remove message {message.message_id}: {e}")
 
@@ -54,7 +57,16 @@ class SpamFilter:
         user_id = message.from_user.id
         chat_id = message.chat_id
         self.logger.warning(f"[{self._name}] Banning user {user_id}")
-        await context.bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
+        await self._execute_telegram_api_request(context.bot.ban_chat_member, chat_id=chat_id, user_id=user_id)
+
+    async def _execute_telegram_api_request(self, func, *args, **kwargs):
+        for _ in range(self.__telegram_api_request_retry_count):
+            try:
+                return await func(*args, **kwargs)
+            except JSONDecodeError as e:
+                self.logger.warning(f"[{self._name}] Telegram API request failed: {e}")
+                await asyncio.sleep(1)
+        self.logger.error(f"[{self._name}] Failed to execute Telegram API request after {self.__telegram_api_request_retry_count} retries for {func.__name__}")
 
     def _is_message_should_be_ignored(self, update: EnrichedUpdate) -> bool:
         """Checks if the message should be ignored."""

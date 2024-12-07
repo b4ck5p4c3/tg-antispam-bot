@@ -96,8 +96,10 @@ class OpenAISpamFilter(SpamFilter):
         user = update.message.from_user
         chat_id = update.message.chat_id
         await self._try_remove_message(context, update.message)
-        await context.bot.restrict_chat_member(chat_id=chat_id, user_id=user.id, permissions=ChatPermissions(can_send_messages=False))
-        ban_message = await context.bot.send_message(chat_id=chat_id,  parse_mode = "Markdown", text=self._get_restrict_message(update))
+        await self._execute_telegram_api_request(context.bot.restrict_chat_member, chat_id=chat_id,
+                                                 user_id=user.id,permissions=ChatPermissions(can_send_messages=False))
+        ban_message = await self._execute_telegram_api_request(context.bot.send_message, chat_id=chat_id,
+                                                               parse_mode="Markdown",text=self._get_restrict_message(update))
         await self._delete_message_with_delay(context, ban_message, self.openai_config.ban_notification_message_delete_delay_sec)
         context.job_queue.run_once(lambda ctx: self._ban_message_author(context, update.message), self.openai_config.ban_delay_sec)
 
@@ -105,8 +107,8 @@ class OpenAISpamFilter(SpamFilter):
         await super()._on_pass(update, context)
         if update.message.id in self.__MESSAGE_SPAMNESS_MAP:
             if self.__MESSAGE_SPAMNESS_MAP[update.message.id] >= self.openai_config.sussy_message_min_spamness:
-                await context.bot.set_message_reaction(chat_id=update.message.chat_id,
-                                                       message_id=update.message.id, reaction=self.openai_config.sussy_message_reaction)
+                await self._execute_telegram_api_request(context.bot.set_message_reaction, chat_id=update.message.chat_id,
+                                                         message_id=update.message.id, reaction=self.openai_config.sussy_message_reaction)
             del self.__MESSAGE_SPAMNESS_MAP[update.message.id]
 
 
