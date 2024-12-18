@@ -1,9 +1,10 @@
 from functools import wraps
-from logging import Logger
 
 from telegram import Update, User
 from telegram.ext import CallbackContext
 
+from src.TelegramHelper import TelegramHelper
+from src.util.LoggerUtil import LoggerUtil
 from src.util.config.Config import Config
 
 
@@ -22,7 +23,10 @@ def admin_command(func):
 
 class BaseHandler:
 
-    def __init__(self, logger: Logger, config: Config):
-        self.logger = logger
+    __logger_name = "GenericHandler"
+
+    def __init__(self, config: Config):
         self.config = config
+        self.logger = LoggerUtil.get_logger("EventHandler", self.__logger_name)
+        self.telegram_helper = TelegramHelper(self.logger, config)
 

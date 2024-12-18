@@ -1,5 +1,3 @@
-import logging
-
 from uvicorn import Config
 
 from src.handlers.spam_filters.SpamFilter import SpamFilter
@@ -8,6 +6,9 @@ from src.handlers.spam_filters.openai.OpenAISpamFilter import OpenAISpamFilter, 
 
 
 class FilterFactory:
+
+
+
     
     class Builder:
         def __init__(self, first_filter: SpamFilter):
@@ -23,9 +24,9 @@ class FilterFactory:
             return self.filters[0]
 
     @staticmethod
-    def get_default_chain(logger: logging.Logger, config: Config, openai_config: OpenAIFilterConfig) -> SpamFilter:
+    def get_default_chain(config: Config, openai_config: OpenAIFilterConfig) -> SpamFilter:
         """Returns the default chain of spam spam_filters"""
-        return FilterFactory.Builder(LolsSpamFilter(logger, config)) \
-            .then(OpenAISpamFilter(logger, config, openai_config)) \
+        return FilterFactory.Builder(LolsSpamFilter(config)) \
+            .then(OpenAISpamFilter(config, openai_config)) \
             .build()
 

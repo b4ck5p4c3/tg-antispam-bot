@@ -1,6 +1,5 @@
 import os
 import re
-from logging import Logger
 
 import httpx
 from openai import OpenAI
@@ -51,13 +50,14 @@ class OpenAIFilterConfig(BaseModel):
 class OpenAISpamFilter(SpamFilter):
     _NOT_FOUND = -1
     __MESSAGE_SPAMNESS_MAP = {}
+    _filter_name = "OpenAI"
 
-    def __init__(self, a_logger: Logger, config: Config, openai_config: OpenAIFilterConfig):
-        super().__init__(a_logger, config)
+    def __init__(self, config: Config, openai_config: OpenAIFilterConfig):
+        super().__init__(config)
         token = os.environ.get("OPENAI_API_KEY")
         proxy_url = os.environ.get("OPENAI_PROXY_URL")
         if not token:
-            self.logger.warning(f"[{self._name}] OPENAI_TOKEN token is not set. Module is disabled")
+            self.logger.warning("OPENAI_TOKEN token is not set. Module is disabled")
             self.openai_client = None
         else:
             self.openai_client = OpenAI() if proxy_url is None or proxy_url == "" else OpenAI(
@@ -71,11 +71,11 @@ class OpenAISpamFilter(SpamFilter):
             try:
                 spamness_percent = int(spamness_percent)
             except ValueError:
-                self.logger.error(f"[{self._name}] Failed to parse spamness percent from OpenAI response: {text}")
+                self.logger.error(f"Failed to parse spamness percent from OpenAI response: {text}")
                 return self._NOT_FOUND
             return spamness_percent
         else:
-            self.logger.error(f"[{self._name}] Failed to parse spamness percent from OpenAI response: {text}")
+            self.logger.error(f"Failed to parse spamness percent from OpenAI response: {text}")
             return self._NOT_FOUND
 
     def _is_spam(self, update: EnrichedUpdate, context: CallbackContext) -> bool:
@@ -87,7 +87,7 @@ class OpenAISpamFilter(SpamFilter):
         spamness_percent = self._find_spamness_percent(answer_text)
         if spamness_percent == self._NOT_FOUND:
             return False
-        self.logger.info(f"[{self._name}] Spamness of message {update.message.id}: {spamness_percent}%%")
+        self.logger.info(f"Spamness of message {update.message.id}: {spamness_percent}%")
         self.__MESSAGE_SPAMNESS_MAP[update.message.id] = spamness_percent
         return spamness_percent >= self.openai_config.min_spamness_percent
 
@@ -95,20 +95,18 @@ class OpenAISpamFilter(SpamFilter):
         """Handles the action to take when a message is identified as spam."""
         user = update.message.from_user
         chat_id = update.message.chat_id
-        await self._try_remove_message(context, update.message)
-        await self._execute_telegram_api_request(context.bot.restrict_chat_member, chat_id=chat_id,
-                                                 user_id=user.id,permissions=ChatPermissions(can_send_messages=False))
-        ban_message = await self._execute_telegram_api_request(context.bot.send_message, chat_id=chat_id,
-                                                               parse_mode="Markdown",text=self._get_restrict_message(update))
-        await self._delete_message_with_delay(context, ban_message, self.openai_config.ban_notification_message_delete_delay_sec)
-        context.job_queue.run_once(lambda ctx: self._ban_message_author(context, update.message), self.openai_config.ban_delay_sec)
+        await self.telegram_helper.try_remove_message(context, update.message)
+        await self.telegram_helper.restrict_chat_member(context, chat_id, user.id, ChatPermissions(can_send_messages=False))
+        ban_message = await self.telegram_helper.send_message(context, chat_id, self._get_restrict_message(update))
+    
+        await self.telegram_helper.delete_message_with_delay(context, ban_message, self.openai_config.ban_notification_message_delete_delay_sec)
+        context.job_queue.run_once(lambda ctx: self.telegram_helper.ban_message_author(context, update.message), self.openai_config.ban_delay_sec)
 
     async def _on_pass(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         await super()._on_pass(update, context)
         if update.message.id in self.__MESSAGE_SPAMNESS_MAP:
             if self.__MESSAGE_SPAMNESS_MAP[update.message.id] >= self.openai_config.sussy_message_min_spamness:
-                await self._execute_telegram_api_request(context.bot.set_message_reaction, chat_id=update.message.chat_id,
-                                                         message_id=update.message.id, reaction=self.openai_config.sussy_message_reaction)
+                await self.telegram_helper.add_message_reaction(context, update.message, self.openai_config.sussy_message_reaction)
             del self.__MESSAGE_SPAMNESS_MAP[update.message.id]
 
 

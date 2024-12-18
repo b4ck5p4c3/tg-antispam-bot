@@ -1,12 +1,14 @@
 import asyncio
 import os
 
-from telegram.ext import MessageHandler, filters, CommandHandler
+from telegram.ext import MessageHandler, filters, CommandHandler, ChatJoinRequestHandler
 from telegram import Update
 
 from src.AppStarter import get_telegram_application, get_webserver
 from src.handlers.ConfigurationCommandsHandler import ConfigurationCommandsHandler
+from src.handlers.LolsOnJoinSpamCheck import LolsOnJoinSpamCheck
 from src.handlers.spam_filters.FilterFactory import FilterFactory
+from src.handlers.spam_filters.lols.LolsSpamFilter import LolsSpamFilter
 from src.handlers.spam_filters.openai.OpenAISpamFilter import OpenAIFilterConfig
 from src.locale.LocaleFactory import LocaleFactory
 from src.telegram.EnrichedUpdate import EnrichedUpdate
@@ -23,7 +25,6 @@ WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "0.0.0.0")
 
 
 async def main():
-    logger = LoggerUtil.get_logger("BOT")
 
     def with_enriched_update(runnable):
         async def wrapper(update, context):
@@ -31,6 +32,7 @@ async def main():
             await runnable(enriched_update, context)
         return wrapper
 
+    logger = LoggerUtil.get_logger("AdminProvider", "AdminProvider")
     admin_provider: AdminProvider = AdminProvider(logger)
 
     config_path = os.path.join(CONFIG_FOLDER_PATH, "config.json")
@@ -40,15 +42,18 @@ async def main():
     openai_config: OpenAIFilterConfig = JsonModelRepo(openai_config_path).load(OpenAIFilterConfig, OpenAIFilterConfig())
     locale_folder_path = os.path.join(CONFIG_FOLDER_PATH, "locale")
     locale_factory = LocaleFactory(locale_folder_path)
+    lols_spam_filter = LolsSpamFilter(config)
 
-    antispam_filters = FilterFactory.get_default_chain(logger, config, openai_config)
-    configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(logger, config)
+    antispam_filters = FilterFactory.get_default_chain(config, openai_config)
+    configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(config)
+    lols_on_join_spam_check: LolsOnJoinSpamCheck = LolsOnJoinSpamCheck(config, lols_spam_filter)
 
     telegram_application = get_telegram_application(TOKEN, URL)
     telegram_application.add_handler(CommandHandler("moderate", with_enriched_update(configuration_commands_handler.handle_add_moderable_chat)))
     telegram_application.add_handler(CommandHandler("stop_moderate", with_enriched_update(configuration_commands_handler.handle_remove_moderable_chat)))
     telegram_application.add_handler(MessageHandler(filters.ALL, with_enriched_update(antispam_filters.apply)))
-    await telegram_application.bot.set_webhook(url=f"{WEBHOOK_HOST}/telegram", allowed_updates=Update.MESSAGE)
+    telegram_application.add_handler(ChatJoinRequestHandler(with_enriched_update(lols_on_join_spam_check.handle_user_join)))
+    await telegram_application.bot.set_webhook(url=f"{WEBHOOK_HOST}/telegram", allowed_updates=Update.ALL_TYPES)
 
 
     webserver = get_webserver(PORT, WEBHOOK_HOST, telegram_application)
