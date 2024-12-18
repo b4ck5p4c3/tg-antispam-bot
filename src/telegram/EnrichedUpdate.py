@@ -45,3 +45,4 @@ class EnrichedUpdate(Update):
     @property
     def locale(self):
         return self._locale
+
