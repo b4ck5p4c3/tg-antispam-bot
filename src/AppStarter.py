@@ -9,7 +9,12 @@ from telegram import Update
 
 
 def get_telegram_application(token: str, base_url: str) -> Application:
-    return Application.builder().token(token).base_url(f"{base_url}/bot").updater(None).build()
+    return (Application.builder()
+            .token(token)
+            .base_url(f"{base_url}/bot")
+            .base_file_url(f"{base_url}/file/bot")
+            .updater(None)
+            .build())
 
 def get_webserver(server_port: int, host: str, telegram_application) -> uvicorn.Server:
     flask_app = Flask(__name__)

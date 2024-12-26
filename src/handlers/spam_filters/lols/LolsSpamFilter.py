@@ -2,6 +2,7 @@ from telegram import Update
 from telegram.ext import CallbackContext
 
 from src.handlers.spam_filters.HTTPJsonSpamFilter import HTTPJsonSpamFilter
+from src.util.config.Config import Config
 
 
 class LolsSpamFilter(HTTPJsonSpamFilter):
@@ -9,10 +10,10 @@ class LolsSpamFilter(HTTPJsonSpamFilter):
 
     _filter_name = "Lols"
 
-    def __init__(self, config):
+    def __init__(self, config: Config):
         super().__init__(config)
 
-    def _is_spam(self, update: Update, context: CallbackContext) -> bool:
+    async def _is_spam(self, update: Update, context: CallbackContext) -> bool:
         """Checks if message is spam. Returns true if message is spam"""
         message_author_id = update.message.from_user.id
         return self.is_spam(message_author_id)

@@ -20,6 +20,8 @@ The following environment variables are used to configure the bot:
 - `WEBHOOK_PORT`: Port on which the webhook server will run
 - `CONFIG_FOLDER_PATH`: Path to the configuration files directory
 - `SWYNCA_API_KEY`: API key for accessing Swynca
+- `TESSERACT_PATH`: Path to the tesseract executable (Optional, default: '/usr/bin/tesseract')
+- `TESSERACT_LANG`: Language code for tesseract OCR (Optional, default: 'rus')
 ## Contribution
 
 For guidelines on how to contribute to this project, please see the [CONTRIBUTING.md](CONTRIBUTING.md) file.

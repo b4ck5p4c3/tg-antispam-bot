@@ -20,7 +20,8 @@ from src.util.config.JsonModelRepo import JsonModelRepo
 URL = os.getenv("TELEGRAM_API_URL")
 PORT = int(os.getenv("WEBHOOK_PORT", 8000))
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CONFIG_FOLDER_PATH = os.getenv("CONFIG_FOLDER_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"))
+WORKDIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FOLDER_PATH = os.getenv("CONFIG_FOLDER_PATH", os.path.join(WORKDIR, "data"))
 WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "0.0.0.0")
 
 

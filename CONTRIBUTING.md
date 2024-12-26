@@ -36,4 +36,19 @@
 5. **Register the Filter**: 
    - Ensure your filter is included in the spam filter chain in `main.py`.
 
+## I want a new language for OCR (tesseract). How can I add it?
+
+1. **Find the Language Pack**: 
+   - Use the `tesseract --list-langs` command to list the available language packs or visit [this link](https://tesseract-ocr.github.io/tessdoc/Data-Files-in-different-versions.html)
+
+2. **[FOR DOCKER ONLY] Modify the Dockerfile**:
+   - Open the `Dockerfile` in the root directory.
+   - Add the necessary package for the new language pack (e.g., `tesseract-ocr-<LANG_CODE>`). 
+   Example: `RUN apt-get install -y tesseract-ocr-eng`
+
+3. **[FOR LOCAL INSTALLATION] Install the Language Pack**:
+   - Use the package manager of your choice to install the language pack (e.g., `apt-get install tesseract-ocr-<LANG_CODE>`).
+
+
 By following these guidelines, you can extend the functionality of the B4CKSP4CE Telegram Antispam Bot with custom handlers and filters.
+

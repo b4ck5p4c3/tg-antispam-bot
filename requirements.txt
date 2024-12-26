@@ -31,3 +31,6 @@ tzlocal==5.2
 urllib3==2.2.3
 uvicorn==0.31.0
 Werkzeug==3.0.4
+
+pytesseract~=0.3.13
+pillow~=11.0.0

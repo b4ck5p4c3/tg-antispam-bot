@@ -5,7 +5,7 @@ from requests import JSONDecodeError
 from telegram.ext import CallbackContext
 
 from src.util.config.Config import Config
-from telegram import Message, ChatPermissions
+from telegram import Message, ChatPermissions, File
 
 
 class TelegramHelper:
@@ -47,6 +47,9 @@ class TelegramHelper:
 
     async def restrict_chat_member(self, context: CallbackContext, chat_id: int, user_id: int, permissions: ChatPermissions) -> None:
         await self.__execute_telegram_api_request(context.bot.restrict_chat_member, chat_id=chat_id, user_id=user_id, permissions=permissions)
+
+    async def get_file(self, context: CallbackContext, **kwargs) -> 'File':
+        return await self.__execute_telegram_api_request(context.bot.get_file, **kwargs)
 
     async def __execute_telegram_api_request(self, func, *args, **kwargs):
         for _ in range(self.__telegram_api_request_retry_count):

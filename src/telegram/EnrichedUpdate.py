@@ -1,7 +1,9 @@
+from click import Tuple
 from telegram import Update
 
 from src.locale.Locale import Locale
 from src.locale.LocaleFactory import LocaleFactory
+from src.telegram.PhotoSizeWithRecognition import PhotoSizeWithRecognition
 
 
 class EnrichedUpdate(Update):
@@ -33,6 +35,7 @@ class EnrichedUpdate(Update):
             purchased_paid_media=update.purchased_paid_media,
         )
         self._locale = locale
+        self._recognized_photos = None
 
     @staticmethod
     def from_update(update: Update, locale_factory: LocaleFactory) -> 'EnrichedUpdate':
@@ -46,3 +49,9 @@ class EnrichedUpdate(Update):
     def locale(self):
         return self._locale
 
+    @property
+    def recognized_photos(self) -> tuple[PhotoSizeWithRecognition, ...]:
+        return self._recognized_photos
+
+    def set_recognized_photos(self, recognized_photos: tuple[PhotoSizeWithRecognition, ...]):
+        self._recognized_photos = recognized_photos

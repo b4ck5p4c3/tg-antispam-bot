@@ -23,7 +23,7 @@ Please analyze the message provided below for signs of spam or fraud. Pay attent
 - Promises of unrealistically favorable conditions.
 
 Note that messages are sent in a technical community chat, so discussions of hacks, exploits, and other specialized terms are absolutely normal. 
-Also, keep in mind that most messages will be in Russian, and this is not a sign of spam. 
+Also, keep in mind that most messages will be in Russian, and this is not a sign of spam. Also in the end of the message i'll provide a attachments transcription, please use it for spam analysis.
 After analysis, provide a brief justification of your conclusions and evaluate the "spamness" of the message as a percentage from 0% to 100%, where 0% is absolutely not spam, and 100% is clear spam. 
 If the message is too short or lacks logical content, report this and set the spamness to 0%.
 
@@ -44,8 +44,16 @@ class OpenAIFilterConfig(BaseModel):
     min_spamness_percent: int = 65
     ban_delay_sec: int = 60 * 10
     ban_notification_message_delete_delay_sec: int = 30
-    sussy_message_min_spamness: int = 45
+    sussy_message_min_spamness: int = 35
     sussy_message_reaction: str = "👀"
+
+def prepare_message_for_ai(update: EnrichedUpdate) -> str:
+    message_text = extract_message_text(update) or "<Message is not text>"
+    if len(update.recognized_photos) != 0:
+        message_text += "\n\n###\n Recognized content:\n"
+    for photo_recognition in update.recognized_photos:
+        message_text += f"PHOTO CONTENT START\n{photo_recognition.ocr_text}\nPHOTO CONTENT END\n\n"
+    return message_text
 
 class OpenAISpamFilter(SpamFilter):
     _NOT_FOUND = -1
@@ -78,11 +86,12 @@ class OpenAISpamFilter(SpamFilter):
             self.logger.error(f"Failed to parse spamness percent from OpenAI response: {text}")
             return self._NOT_FOUND
 
-    def _is_spam(self, update: EnrichedUpdate, context: CallbackContext) -> bool:
+    async def _is_spam(self, update: EnrichedUpdate, context: CallbackContext) -> bool:
         if not self.openai_client:
             return False
         """Checks if message is spam. Returns true if message is spam"""
-        response = self._openai_check_message(extract_message_text(update))
+        print(update.recognized_photos)
+        response = self._openai_check_message(prepare_message_for_ai(update))
         answer_text = response.choices[0].message.content
         spamness_percent = self._find_spamness_percent(answer_text)
         if spamness_percent == self._NOT_FOUND:

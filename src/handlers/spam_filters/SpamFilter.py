@@ -17,7 +17,6 @@ def extract_message_text(update: EnrichedUpdate) -> Optional[str]:
         return update.message.caption
     return None
 
-
 class SpamFilter:
 
     _filter_name = "Generic Filter"
@@ -30,7 +29,7 @@ class SpamFilter:
         self.telegram_helper = TelegramHelper(self.logger, config)
 
 
-    def _is_spam(self, update: EnrichedUpdate, context: CallbackContext) -> bool:
+    async def _is_spam(self, update: EnrichedUpdate, context: CallbackContext) -> bool:
         """Checks if message is spam. Returns True if message is spam, otherwise False."""
         # Implement the spam checking logic here
         raise NotImplementedError("Subclasses should implement this method.")
@@ -48,10 +47,9 @@ class SpamFilter:
         if update.message is None:
             self.logger.debug("Update is not a message, skipping spam check")
             return True
-
         conditions = [
-            (extract_message_text(update) is None,
-             "Message is not text, skipping spam check"),
+            (extract_message_text(update) is None and len(update.message.photo)==0,
+             "Message is not text or image, skipping spam check"),
             (self.config.is_user_trusted(update.message.from_user.id), 
              f"User {update.message.from_user.id} is trusted, skipping spam check"),
             (not self.config.is_chat_moderated(update.message.chat_id), 
@@ -82,7 +80,7 @@ class SpamFilter:
         """Applies the spam filter to the incoming message."""
         if self._is_message_should_be_ignored(update) :
             return
-        if self._is_spam(update, context):
+        if await self._is_spam(update, context):
             await self._on_spam(update, context)
             return
         else:
