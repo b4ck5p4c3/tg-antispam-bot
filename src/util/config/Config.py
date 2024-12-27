@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from src.util.AdminProvider import AdminProvider
+from src.util.admin.AdminProvider import AdminProvider
 from src.util.config.ModelRepo import ModelRepo
 
 

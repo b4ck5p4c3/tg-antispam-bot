@@ -1,8 +1,8 @@
 import asyncio
 import os
 
-from telegram.ext import MessageHandler, filters, CommandHandler, ChatJoinRequestHandler, ChatMemberHandler
-from telegram import Update, ChatMemberMember
+from telegram.ext import MessageHandler, filters, CommandHandler, ChatMemberHandler
+from telegram import Update
 
 from src.AppStarter import get_telegram_application, get_webserver
 from src.handlers.ConfigurationCommandsHandler import ConfigurationCommandsHandler
@@ -12,8 +12,9 @@ from src.handlers.spam_filters.lols.LolsSpamFilter import LolsSpamFilter
 from src.handlers.spam_filters.openai.OpenAISpamFilter import OpenAIFilterConfig
 from src.locale.LocaleFactory import LocaleFactory
 from src.telegram.EnrichedUpdate import EnrichedUpdate
-from src.util.AdminProvider import AdminProvider
+from src.util.admin.AdminProvider import AdminProvider
 from src.util.LoggerUtil import LoggerUtil
+from src.util.admin.SwyncaAdminProvider import SwyncaAdminProvider
 from src.util.config.Config import Config
 from src.util.config.JsonModelRepo import JsonModelRepo
 
@@ -34,7 +35,7 @@ async def main():
         return wrapper
 
     logger = LoggerUtil.get_logger("AdminProvider", "AdminProvider")
-    admin_provider: AdminProvider = AdminProvider(logger)
+    admin_provider: AdminProvider = SwyncaAdminProvider(logger)
 
     config_path = os.path.join(CONFIG_FOLDER_PATH, "config.json")
     config_repo: JsonModelRepo[Config] = JsonModelRepo(config_path)

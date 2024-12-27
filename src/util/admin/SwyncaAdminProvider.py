@@ -4,14 +4,15 @@ from logging import Logger
 
 import requests
 
+from src.util.admin.AdminProvider import AdminProvider
 
-class AdminProvider:
+
+class SwyncaAdminProvider(AdminProvider):
     """Provides a list of admin users"""
 
     CACHE_LIFETIME_SEC = 60
     __CACHE_UPDATED_AT = 0
     SWYNCA_API_URL="https://re-swynca.app.0x08.in/"
-
 
 
     def __init__(self, logger: Logger, token=None):
@@ -42,7 +43,7 @@ class AdminProvider:
         else:
             admins = response.json()
             self.admins = [
-                int(admin['telegramMetadata']['telegramId']) for admin in admins 
+                int(admin['telegramMetadata']['telegramId']) for admin in admins
                 if 'telegramMetadata' in admin and 'telegramId' in admin['telegramMetadata']
             ]
             self.__CACHE_UPDATED_AT = time.time()

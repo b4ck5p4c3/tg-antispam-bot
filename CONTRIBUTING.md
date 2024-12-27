@@ -50,5 +50,23 @@
    - Use the package manager of your choice to install the language pack (e.g., `apt-get install tesseract-ocr-<LANG_CODE>`).
 
 
+## WTF is Swynca?? How can I replace it with another service?
+
+Swynca is a service that provides list of privileged users. 
+If you want to replace it with another service, you need to implement a new service that provides the same functionality. \
+First thing first, you need to create a new class that extends [AdminProvider](src/util/admin/AdminProvider.py) and implement the necessary methods. \
+Then, you need to replace the Swynca service with your new service in the [main.py](main.py) file. 
+Example: 
+```
+-     admin_provider: AdminProvider = SwyncaAdminProvider(logger)
++     admin_provider: AdminProvider = YourNewAdminProvider(logger)
+```
+
+Done! 
+
+
+
+---
+
 By following these guidelines, you can extend the functionality of the B4CKSP4CE Telegram Antispam Bot with custom handlers and filters.
 
