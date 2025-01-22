@@ -15,9 +15,11 @@ class HTTPJsonSpamFilter(SpamFilter):
         except requests.exceptions.RequestException as e:
             self.logger.error("Request to %s failed: %s", url, e)
             return {}
-        self.logger.debug("Request to %s finished with status code %d and body: %s", url, response.status_code, response.text)
+        self.logger.debug("Request to %s finished with status code %d and body: %s", url, response.status_code,
+                          response.text)
         if response.status_code not in acceptable_codes:
-            self.logger.error("Request to %s failed with status code %d. Body: %s", url, response.status_code, response.text)
+            self.logger.error("Request to %s failed with status code %d. Body: %s", url, response.status_code,
+                              response.text)
             return {}
         try:
             return response.json()

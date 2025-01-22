@@ -7,6 +7,7 @@ from src.util.config.ModelRepo import ModelRepo
 
 T = TypeVar('T', bound=BaseModel)
 
+
 class JsonModelRepo(ModelRepo[T]):
     def __init__(self, file_path: str):
         self.file_path = file_path

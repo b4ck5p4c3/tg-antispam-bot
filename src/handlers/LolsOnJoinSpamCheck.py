@@ -11,7 +11,6 @@ class LolsOnJoinSpamCheck(BaseHandler):
         super().__init__(config)
         self.lols_spam_filter = lols_spam_filter
 
-
     async def handle_user_join(self, update: Update, context: CallbackContext) -> None:
         """Handles the user join event."""
         for user in update.message.new_chat_members:

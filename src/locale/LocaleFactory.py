@@ -25,7 +25,7 @@ class LocaleFactory:
     def _get_locale_file_value(self, locale_name: str) -> str:
         if locale_name not in LocaleName.__dict__.values():
             locale_name = self.__DEFAULT_LOCALE
-        with open(f"{self.locale_folder_path}/en.json", 'r') as file: # TODO: Fix
+        with open(f"{self.locale_folder_path}/en.json", 'r') as file:  # TODO: Fix
             return file.read()
 
     def get_default_locale(self) -> Locale:

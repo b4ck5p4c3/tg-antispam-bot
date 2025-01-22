@@ -1,4 +1,4 @@
-from os import path, getenv
+from os import getenv
 
 from src.handlers.spam_filters.OCRFilter import OCRFilter
 from src.handlers.spam_filters.SpamFilter import SpamFilter
@@ -8,10 +8,6 @@ from src.util.config.Config import Config
 
 
 class FilterFactory:
-
-
-
-    
     class Builder:
         def __init__(self, first_filter: SpamFilter):
             self.filters = [first_filter]
@@ -34,4 +30,3 @@ class FilterFactory:
             .then(OCRFilter(config, tesseract_path, tesseract_lang)) \
             .then(OpenAISpamFilter(config, openai_config)) \
             .build()
-

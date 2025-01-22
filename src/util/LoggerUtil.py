@@ -1,5 +1,6 @@
 import logging
 
+
 class LoggerUtil:
 
     @staticmethod

@@ -30,12 +30,14 @@ If the message is too short or lacks logical content, report this and set the sp
 Format your response as follows (STRICTLY IN THIS FORMAT, DEVIATION IS PROHIBITED): [Your justification] (spamness [percentage]%)
 """
 
+
 class OpenAIPromptConfig(BaseModel):
     temperature: float = 1.0
     max_tokens: int = 512
     top_p: float = 1.0
     frequency_penalty: float = 0.0
     presence_penalty: float = 0.0
+
 
 class OpenAIFilterConfig(BaseModel):
     prompt: str = default_prompt
@@ -47,6 +49,7 @@ class OpenAIFilterConfig(BaseModel):
     sussy_message_min_spamness: int = 35
     sussy_message_reaction: str = "👀"
 
+
 def prepare_message_for_ai(update: EnrichedUpdate) -> str:
     message_text = extract_message_text(update) or "<Message is not text>"
     if len(update.recognized_photos) != 0:
@@ -54,6 +57,7 @@ def prepare_message_for_ai(update: EnrichedUpdate) -> str:
     for photo_recognition in update.recognized_photos:
         message_text += f"PHOTO CONTENT START\n{photo_recognition.ocr_text}\nPHOTO CONTENT END\n\n"
     return message_text
+
 
 class OpenAISpamFilter(SpamFilter):
     _NOT_FOUND = -1
@@ -105,19 +109,22 @@ class OpenAISpamFilter(SpamFilter):
         user = update.message.from_user
         chat_id = update.message.chat_id
         await self.telegram_helper.try_remove_message(context, update.message)
-        await self.telegram_helper.restrict_chat_member(context, chat_id, user.id, ChatPermissions(can_send_messages=False))
+        await self.telegram_helper.restrict_chat_member(context, chat_id, user.id,
+                                                        ChatPermissions(can_send_messages=False))
         ban_message = await self.telegram_helper.send_message(context, chat_id, self._get_restrict_message(update))
-    
-        await self.telegram_helper.delete_message_with_delay(context, ban_message, self.openai_config.ban_notification_message_delete_delay_sec)
-        context.job_queue.run_once(lambda ctx: self.telegram_helper.ban_message_author(context, update.message), self.openai_config.ban_delay_sec)
+
+        await self.telegram_helper.delete_message_with_delay(context, ban_message,
+                                                             self.openai_config.ban_notification_message_delete_delay_sec)
+        context.job_queue.run_once(lambda ctx: self.telegram_helper.ban_message_author(context, update.message),
+                                   self.openai_config.ban_delay_sec)
 
     async def _on_pass(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         await super()._on_pass(update, context)
         if update.message.id in self.__MESSAGE_SPAMNESS_MAP:
             if self.__MESSAGE_SPAMNESS_MAP[update.message.id] >= self.openai_config.sussy_message_min_spamness:
-                await self.telegram_helper.add_message_reaction(context, update.message, self.openai_config.sussy_message_reaction)
+                await self.telegram_helper.add_message_reaction(context, update.message,
+                                                                self.openai_config.sussy_message_reaction)
             del self.__MESSAGE_SPAMNESS_MAP[update.message.id]
-
 
     def _get_restrict_message(self, update: EnrichedUpdate) -> str:
         return update.locale.openai_user_ban_notification.format(
@@ -125,7 +132,6 @@ class OpenAISpamFilter(SpamFilter):
             spamness=self.__MESSAGE_SPAMNESS_MAP[update.message.id],
             ban_delay_min=self.openai_config.ban_delay_sec // 60
         )
-
 
     def _openai_check_message(self, message: str):
         response = self.openai_client.chat.completions.create(

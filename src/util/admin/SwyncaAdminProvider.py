@@ -3,7 +3,6 @@ import time
 from logging import Logger
 
 import requests
-from telegram import Update
 
 from src.util.admin.AdminProvider import AdminProvider
 
@@ -13,8 +12,7 @@ class SwyncaAdminProvider(AdminProvider):
 
     CACHE_LIFETIME_SEC = 60
     __CACHE_UPDATED_AT = 0
-    SWYNCA_API_URL="https://re-swynca.app.0x08.in/"
-
+    SWYNCA_API_URL = "https://re-swynca.app.0x08.in/"
 
     def __init__(self, logger: Logger, token=None):
         self.admins = None
@@ -25,11 +23,11 @@ class SwyncaAdminProvider(AdminProvider):
             swynca_api_key = token
         self.session = requests.Session()
         self.session.headers.update({'Cookie': f"session={swynca_api_key}",
-                                     "accept":"application/json",
-                                     "User-Agent":"Tg-antispam"}
+                                     "accept": "application/json",
+                                     "User-Agent": "Tg-antispam"}
                                     )
 
-    def is_admin(self, user_id: int, __unused:int) -> bool:
+    def is_admin(self, user_id: int, __unused: int) -> bool:
         if self.__required_cache_update():
             self.admins = self.__request_admins()
             return user_id in self.admins
@@ -37,7 +35,7 @@ class SwyncaAdminProvider(AdminProvider):
             return user_id in self.admins
 
     def __request_admins(self) -> list[int]:
-        response = self.session.get(self.SWYNCA_API_URL+"api/members")
+        response = self.session.get(self.SWYNCA_API_URL + "api/members")
         if response.status_code != 200:
             self.logger.error("Swynca returned %d status code, body: %s", response.status_code, response.text)
             return []

@@ -25,12 +25,14 @@ from telegram import Update
 
 def __get_telegram_application_builder(token: str, base_url: str) -> ApplicationBuilder:
     return (Application.builder()
-     .token(token)
-     .base_url(f"{base_url}/bot")
-     .base_file_url(f"{base_url}/file/bot"))
+            .token(token)
+            .base_url(f"{base_url}/bot")
+            .base_file_url(f"{base_url}/file/bot"))
+
 
 def get_telegram_application_webhook(token: str, base_url: str) -> Application:
     return __get_telegram_application_builder(token, base_url).updater(None).build()
+
 
 def get_telegram_application_polling(token: str, base_url: str) -> Application:
     return __get_telegram_application_builder(token, base_url).build()
@@ -55,9 +57,6 @@ def get_webserver(server_port: int, host: str, telegram_application) -> uvicorn.
     return webserver
 
 
-
-
-
 class BotBuilder:
     workdir = os.path.dirname(os.path.abspath(__file__))
     __admin_provider_supplier = None
@@ -67,6 +66,7 @@ class BotBuilder:
         async def wrapper(update, context):
             enriched_update = EnrichedUpdate.from_update(update, self.__get_locale_factory())
             await runnable(enriched_update, context)
+
         return wrapper
 
     def __get_locale_factory(self):
@@ -75,7 +75,6 @@ class BotBuilder:
     def __get_config_folder_path(self):
         return os.getenv("CONFIG_FOLDER_PATH", os.path.join(self.workdir, "data"))
 
-
     def swynca_admin_provider(self):
         self.__admin_provider_supplier = self.__get_swynca_admin_provider
         return self
@@ -83,7 +82,6 @@ class BotBuilder:
     def channel_admin_provider(self):
         self.__admin_provider_supplier = self.__get_channel_admin_provider
         return self
-
 
     def build(self):
         if self.telegram_application is None:
@@ -95,11 +93,15 @@ class BotBuilder:
         configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(config)
         lols_on_join_spam_check: LolsOnJoinSpamCheck = LolsOnJoinSpamCheck(config, lols_spam_filter)
 
-        self.telegram_application.add_handler(CommandHandler("moderate", self.__with_enriched_update(configuration_commands_handler.handle_add_moderable_chat)))
-        self.telegram_application.add_handler(CommandHandler("stop_moderate", self.__with_enriched_update(configuration_commands_handler.handle_remove_moderable_chat)))
-        self.telegram_application.add_handler(MessageHandler(filters.ALL, self.__with_enriched_update(antispam_filters.apply)))
-        self.telegram_application.add_handler(ChatMemberHandler(self.__with_enriched_update(lols_on_join_spam_check.handle_user_join),
-                                                           ChatMemberHandler.CHAT_MEMBER))
+        self.telegram_application.add_handler(CommandHandler("moderate", self.__with_enriched_update(
+            configuration_commands_handler.handle_add_moderable_chat)))
+        self.telegram_application.add_handler(CommandHandler("stop_moderate", self.__with_enriched_update(
+            configuration_commands_handler.handle_remove_moderable_chat)))
+        self.telegram_application.add_handler(
+            MessageHandler(filters.ALL, self.__with_enriched_update(antispam_filters.apply)))
+        self.telegram_application.add_handler(
+            ChatMemberHandler(self.__with_enriched_update(lols_on_join_spam_check.handle_user_join),
+                              ChatMemberHandler.CHAT_MEMBER))
 
     def __get_config(self) -> Config:
         admin_provider: AdminProvider = self.__admin_provider_supplier()
@@ -112,12 +114,11 @@ class BotBuilder:
         return SwyncaAdminProvider(LoggerUtil.get_logger("AdminProvider", "SwyncaAdminProvider"))
 
     def __get_channel_admin_provider(self) -> AdminProvider:
-        return ChannelAdminProvider(LoggerUtil.get_logger("AdminProvider", "ChannelAdminProvider"), self.telegram_application.bot)
+        return ChannelAdminProvider(LoggerUtil.get_logger("AdminProvider", "ChannelAdminProvider"),
+                                    self.telegram_application.bot)
 
     def __get_antispam_filter_chain(self, config: Config) -> SpamFilter:
         openai_config_path = os.path.join(self.__get_config_folder_path(), "openai_config.json")
         openai_config: OpenAIFilterConfig = JsonModelRepo(openai_config_path).load(OpenAIFilterConfig,
                                                                                    OpenAIFilterConfig())
         return FilterFactory.get_default_chain(config, openai_config)
-
-

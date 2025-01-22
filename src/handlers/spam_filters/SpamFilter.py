@@ -17,8 +17,8 @@ def extract_message_text(update: EnrichedUpdate) -> Optional[str]:
         return update.message.caption
     return None
 
-class SpamFilter:
 
+class SpamFilter:
     _filter_name = "Generic Filter"
     __logger_name = "SpamFilter"
 
@@ -27,7 +27,6 @@ class SpamFilter:
         self.logger = LoggerUtil.get_logger(self.__logger_name, self._filter_name)
         self.next_filter = next_filter
         self.telegram_helper = TelegramHelper(self.logger, config)
-
 
     async def _is_spam(self, update: EnrichedUpdate, context: CallbackContext) -> bool:
         """Checks if message is spam. Returns True if message is spam, otherwise False."""
@@ -48,11 +47,11 @@ class SpamFilter:
             self.logger.debug("Update is not a message, skipping spam check")
             return True
         conditions = [
-            (extract_message_text(update) is None and len(update.message.photo)==0,
+            (extract_message_text(update) is None and len(update.message.photo) == 0,
              "Message is not text or image, skipping spam check"),
-            (self.config.is_user_trusted(update.message.from_user.id), 
+            (self.config.is_user_trusted(update.message.from_user.id),
              f"User {update.message.from_user.id} is trusted, skipping spam check"),
-            (not self.config.is_chat_moderated(update.message.chat_id), 
+            (not self.config.is_chat_moderated(update.message.chat_id),
              f"Chat {update.message.chat_id} is not moderated, skipping spam check"),
             (await self.config.is_admin(update.effective_user.id, update.effective_chat.id),
              f"User {update.message.from_user.id} is admin, skipping spam check"),
@@ -78,7 +77,7 @@ class SpamFilter:
     @final
     async def apply(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Applies the spam filter to the incoming message."""
-        if await self._is_message_should_be_ignored(update) :
+        if await self._is_message_should_be_ignored(update):
             return
         if await self._is_spam(update, context):
             await self._on_spam(update, context)

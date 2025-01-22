@@ -41,7 +41,6 @@ class Config(BaseModel):
         self.moderated_chat_ids.remove(chat_id)
         self.__config_repo.save(self)
 
-
     def trust(self, user_id: int):
         """
         Add user to trusted users list (trusted users are not checked for spam).
@@ -49,7 +48,6 @@ class Config(BaseModel):
         """
         self.trusted_user_ids.append(user_id)
         self.__config_repo.save(self)
-
 
     def distrust(self, user_id: int):
         """

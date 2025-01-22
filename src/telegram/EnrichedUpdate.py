@@ -1,4 +1,3 @@
-from click import Tuple
 from telegram import Update
 
 from src.locale.Locale import Locale
