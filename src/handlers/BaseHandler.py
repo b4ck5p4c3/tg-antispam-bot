@@ -17,7 +17,7 @@ def admin_command(func):
     async def wrapper(self, update: Update, context: CallbackContext, *args, **kwargs):
         user: User = update.effective_user
         chat: Chat = update.effective_chat
-        if not self.config.is_admin(user.id, chat.id):
+        if not await self.config.is_admin(user.id, chat.id):
             self.logger.info(f"Unauthorized access attempt by user {user.id}")
             return
         return await func(self, update, context, *args, **kwargs)

@@ -7,6 +7,7 @@ from flask import Flask, Response, request
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ApplicationBuilder
 
 from src.handlers.ConfigurationCommandsHandler import ConfigurationCommandsHandler
+from src.handlers.ManualModerationCommandsHandler import ManualModerationCommandsHandler
 from src.handlers.spam_filters.FilterFactory import FilterFactory
 from src.handlers.spam_filters.SpamFilter import SpamFilter
 from src.handlers.spam_filters.openai.OpenAISpamFilter import OpenAIFilterConfig
@@ -88,13 +89,17 @@ class BotBuilder:
         antispam_filters: SpamFilter = self.__get_antispam_filter_chain(config)
 
         configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(config)
+        manual_commands_handler: ManualModerationCommandsHandler = ManualModerationCommandsHandler(config)
 
-        self.telegram_application.add_handler(CommandHandler("moderate", self.__with_enriched_update(
-            configuration_commands_handler.handle_add_moderable_chat)))
-        self.telegram_application.add_handler(CommandHandler("stop_moderate", self.__with_enriched_update(
-            configuration_commands_handler.handle_remove_moderable_chat)))
-        self.telegram_application.add_handler(
-            MessageHandler(filters.ALL, self.__with_enriched_update(antispam_filters.apply)))
+        self.__add_command_handler("moderate", configuration_commands_handler.handle_add_moderable_chat)
+        self.__add_command_handler("abandon", configuration_commands_handler.handle_remove_moderable_chat)
+        self.__add_command_handler("set_audit_log", configuration_commands_handler.set_channel_as_audit_log)
+        self.__add_command_handler("unset_audit_log", configuration_commands_handler.unset_channel_as_audit_log)
+        self.__add_command_handler("ban", manual_commands_handler.handle_ban_user)
+        self.telegram_application.add_handler(MessageHandler(filters.ALL, self.__with_enriched_update(antispam_filters.apply)))
+
+    def __add_command_handler(self, command: str, handler):
+        self.telegram_application.add_handler(CommandHandler(command, self.__with_enriched_update(handler)))
 
     def __get_config(self) -> Config:
         admin_provider: AdminProvider = self.__admin_provider_supplier()

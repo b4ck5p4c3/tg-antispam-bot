@@ -27,7 +27,7 @@ class SwyncaAdminProvider(AdminProvider):
                                      "User-Agent": "Tg-antispam"}
                                     )
 
-    def is_admin(self, user_id: int, __unused: int) -> bool:
+    async def is_admin(self, user_id: int, __unused: int) -> bool:
         if self.__required_cache_update():
             self.admins = self.__request_admins()
             return user_id in self.admins

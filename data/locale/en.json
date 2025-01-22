@@ -4,5 +4,15 @@
   "chat_already_moderated": "Chat {chat_id} is already moderated",
   "user_not_admin": "You are not an admin",
   "chat_removed_from_moderate": "Chat {chat_id} removed from moderable",
-    "chat_not_moderated": "Chat {chat_id} is not moderated"
+  "chat_not_moderated": "Chat {chat_id} is not moderated",
+  "audit_log_chat_set": "Audit log chat has been set to {chat_name} ({chat_id}) by [{user.first_name}](tg://user?id={user.id}) ({user.id})",
+  "audit_log_chat_updated": "Audit log chat updated from {old_chat_name} ({old_chat_id}) to {new_chat_name} ({new_chat_id}) by [{user.first_name}](tg://user?id={user.id}) ({user.id})",
+  "audit_log_chat_removed": "Audit log chat has been removed by [{user.first_name}](tg://user?id={user.id}) ({user.id}). Now messages will be logged in the chat where the command was sent",
+  "audit_log_chat_not_set": "⚠ Audit log chat is not set! Messages will still be logged, but in the chat where the command was sent",
+  "audit_log_chat_not_found": "Audit log chat not set. Are you sure you set it?",
+  "ban_failed": "Failed to ban user {user_id}. Error: `{error}`",
+  "ban_success": "User {user_id} has been banned",
+  "audit_log_user_banned_by_reply": "User [{banned_user.first_name}](tg://user?id={banned_user.id}) ({banned_user.id}) has been banned by [{banned_by.first_name}](tg://user?id={banned_by.id}) ({banned_by.id}) in chat **{chat.title}** for message: ```{message}```",
+    "audit_log_user_banned_by_id": "User {banned_id} has been banned by [{banned_by.first_name}](tg://user?id={banned_by.id}) ({banned_by.id}) in chat **{chat.title}** using id",
+    "ban_user_not_found": "Who do you want to ban? Reply to the message or provide the user ID. Example: `/ban 123456789`"
 }

@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 from src.util.admin.AdminProvider import AdminProvider
@@ -7,6 +9,7 @@ from src.util.config.ModelRepo import ModelRepo
 class Config(BaseModel):
     trusted_user_ids: list[int] = []
     moderated_chat_ids: list[int] = []
+    audit_log_chat_id: Optional[int] = None
     __config_repo: ModelRepo = None
     __admin_provider: AdminProvider = None
 
@@ -40,6 +43,28 @@ class Config(BaseModel):
         """
         self.moderated_chat_ids.remove(chat_id)
         self.__config_repo.save(self)
+
+    def set_audit_log_chat(self, chat_id: int):
+        """
+        Set chat as audit log chat.
+        :param chat_id: Chat id.
+        """
+        self.audit_log_chat_id = chat_id
+        self.__config_repo.save(self)
+
+    def remove_audit_log_chat(self):
+        """
+        Remove audit log chat.
+        """
+        self.audit_log_chat_id = None
+        self.__config_repo.save(self)
+
+    def get_audit_log_chat_id(self) -> Optional[int]:
+        """
+        Get audit log chat id.
+        :return: Audit log chat id.
+        """
+        return self.audit_log_chat_id
 
     def trust(self, user_id: int):
         """
