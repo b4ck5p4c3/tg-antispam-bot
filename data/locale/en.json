@@ -14,5 +14,6 @@
   "ban_success": "User {user_id} has been banned",
   "audit_log_user_banned_by_reply": "User [{banned_user.first_name}](tg://user?id={banned_user.id}) ({banned_user.id}) has been banned by [{banned_by.first_name}](tg://user?id={banned_by.id}) ({banned_by.id}) in chat **{chat.title}** for message: ```{message}```",
     "audit_log_user_banned_by_id": "User {banned_id} has been banned by [{banned_by.first_name}](tg://user?id={banned_by.id}) ({banned_by.id}) in chat **{chat.title}** using id",
-    "ban_user_not_found": "Who exactly do you want to ban? Reply to the message or provide the user ID. Example: `/ban 123456789`"
+    "ban_user_not_found": "Who exactly do you want to ban? Reply to the message or provide the user ID. Example: `/ban 123456789`",
+  "durachok": "durachok?"
 }

@@ -18,3 +18,4 @@ class Locale(BaseModel):
     audit_log_user_banned_by_reply: str
     audit_log_user_banned_by_id: str
     ban_user_not_found: str
+    durachok: str

@@ -17,6 +17,10 @@ class ManualModerationCommandsHandler(BaseHandler):
     async def handle_ban_user(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Handles the /ban command."""
         ban_user_id = self.__extract_ban_user_id(update)
+        if await self.config.is_admin(ban_user_id, update.effective_chat.id):
+            await self.telegram_helper.send_message(context, chat_id=update.message.chat_id,
+                                                    text=update.locale.durachok)
+            return
         if ban_user_id is None:
             await self.telegram_helper.send_message(context, chat_id=update.message.chat_id,
                                                     text=update.locale.ban_user_not_found)
