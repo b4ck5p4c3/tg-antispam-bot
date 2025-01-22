@@ -16,6 +16,20 @@ The bot uses a chain of spam filters to evaluate each incoming message. These fi
 3. Run the bot using `docker run --env TELEGRAM_BOT_TOKEN=<BOT_TOKEN> -v data:/app/data tg_antispam_bot --polling --no-swynca`. 
 Optionally, you can provide the `OPENAI_API_KEY` env variable for filtering messages using OpenAI API.
 
+## Available commands
+
+- `/moderate`: Add chat to the list of moderated chats
+- `/abandon`: Remove chat from the list of moderated chats
+- `/ban`: Ban user from the chat
+- `/set_audit_log`: Set chat for [audit logging](#audit-logging)
+- `/unset_audit_log`: Unset chat for audit logging
+
+## Audit logging
+
+The bot will log all usage of the `/ban` command in the chat configured for audit logging.
+By default, logs are saved in the chat where the command was executed. However, you can specify a different chat for logging by using the `/set_audit_log` command.
+
+⚠ Topics are not supported in audit logs. If you want to use audit logging, make sure to disable topics in the chat.
 
 ## Run arguments
 
