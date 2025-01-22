@@ -3,6 +3,7 @@ import time
 from logging import Logger
 
 import requests
+from telegram import Update
 
 from src.util.admin.AdminProvider import AdminProvider
 
@@ -28,7 +29,7 @@ class SwyncaAdminProvider(AdminProvider):
                                      "User-Agent":"Tg-antispam"}
                                     )
 
-    def is_admin(self, user_id: int) -> bool:
+    def is_admin(self, user_id: int, __unused:int) -> bool:
         if self.__required_cache_update():
             self.admins = self.__request_admins()
             return user_id in self.admins

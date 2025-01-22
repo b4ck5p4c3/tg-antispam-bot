@@ -1,10 +1,12 @@
 import asyncio
 import os
+from argparse import ArgumentParser
+from multiprocessing.managers import Namespace
 
-from telegram.ext import MessageHandler, filters, CommandHandler, ChatMemberHandler
+from telegram.ext import MessageHandler, filters, CommandHandler, ChatMemberHandler, Application
 from telegram import Update
 
-from src.AppStarter import get_telegram_application, get_webserver
+from src.AppStarter import get_telegram_application_webhook, get_webserver, get_telegram_application_polling, BotBuilder
 from src.handlers.ConfigurationCommandsHandler import ConfigurationCommandsHandler
 from src.handlers.LolsOnJoinSpamCheck import LolsOnJoinSpamCheck
 from src.handlers.spam_filters.FilterFactory import FilterFactory
@@ -18,54 +20,52 @@ from src.util.admin.SwyncaAdminProvider import SwyncaAdminProvider
 from src.util.config.Config import Config
 from src.util.config.JsonModelRepo import JsonModelRepo
 
-URL = os.getenv("TELEGRAM_API_URL")
+URL = os.getenv("TELEGRAM_API_URL", "https://api.telegram.org")
 PORT = int(os.getenv("WEBHOOK_PORT", 8000))
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 WORKDIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FOLDER_PATH = os.getenv("CONFIG_FOLDER_PATH", os.path.join(WORKDIR, "data"))
 WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "0.0.0.0")
 
+argument_parser: ArgumentParser = ArgumentParser()
+argument_parser.add_argument("--polling", dest="polling", default=False, action="store_true")
+argument_parser.add_argument("--no-swynca", dest="no_swynca", default=False, action="store_true")
+args: Namespace = argument_parser.parse_args()
 
-async def main():
 
-    def with_enriched_update(runnable):
-        async def wrapper(update, context):
-            enriched_update = EnrichedUpdate.from_update(update, locale_factory)
-            await runnable(enriched_update, context)
-        return wrapper
+def main():
+    logger = LoggerUtil.get_logger("AppStarter", "main")
+    telegram_application: Application = __get_application(args.polling)
+    bot_builder = BotBuilder()
+    bot_builder.telegram_application = telegram_application
+    bot_builder.workdir = WORKDIR
+    __set_admin_provider(bot_builder)
+    bot_builder.build()
+    if args.polling:
+        logger.info("Starting polling")
+        telegram_application.run_polling(allowed_updates=Update.ALL_TYPES)
+    else:
+        logger.info("Starting webhook")
+        asyncio.run(start_webhook(telegram_application))
 
-    logger = LoggerUtil.get_logger("AdminProvider", "AdminProvider")
-    admin_provider: AdminProvider = SwyncaAdminProvider(logger)
 
-    config_path = os.path.join(CONFIG_FOLDER_PATH, "config.json")
-    config_repo: JsonModelRepo[Config] = JsonModelRepo(config_path)
-    config: Config = Config.load_from_file(admin_provider, config_repo)
-    openai_config_path = os.path.join(CONFIG_FOLDER_PATH, "openai_config.json")
-    openai_config: OpenAIFilterConfig = JsonModelRepo(openai_config_path).load(OpenAIFilterConfig, OpenAIFilterConfig())
-    locale_folder_path = os.path.join(CONFIG_FOLDER_PATH, "locale")
-    locale_factory = LocaleFactory(locale_folder_path)
-    lols_spam_filter = LolsSpamFilter(config)
-
-    antispam_filters = FilterFactory.get_default_chain(config, openai_config)
-    configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(config)
-    lols_on_join_spam_check: LolsOnJoinSpamCheck = LolsOnJoinSpamCheck(config, lols_spam_filter)
-
-    telegram_application = get_telegram_application(TOKEN, URL)
-    telegram_application.add_handler(CommandHandler("moderate", with_enriched_update(configuration_commands_handler.handle_add_moderable_chat)))
-    telegram_application.add_handler(CommandHandler("stop_moderate", with_enriched_update(configuration_commands_handler.handle_remove_moderable_chat)))
-    telegram_application.add_handler(MessageHandler(filters.ALL, with_enriched_update(antispam_filters.apply)))
-    telegram_application.add_handler(ChatMemberHandler(with_enriched_update(lols_on_join_spam_check.handle_user_join), ChatMemberHandler.CHAT_MEMBER))
+async def start_webhook(telegram_application: Application):
     await telegram_application.bot.set_webhook(url=f"{WEBHOOK_HOST}/telegram", allowed_updates=Update.ALL_TYPES)
-
-
     webserver = get_webserver(PORT, WEBHOOK_HOST, telegram_application)
-
-
     async with telegram_application:
         await telegram_application.start()
         await webserver.serve()
         await telegram_application.stop()
 
+def __get_application(polling: bool) -> Application:
+    if polling:
+        return get_telegram_application_polling(TOKEN, URL)
+    return get_telegram_application_webhook(TOKEN, URL)
+
+def __set_admin_provider(bot_builder: BotBuilder):
+    if args.no_swynca:
+        bot_builder.channel_admin_provider()
+        return
+    bot_builder.swynca_admin_provider()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

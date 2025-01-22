@@ -9,17 +9,30 @@ Bot using webhooks to receive messages from Telegram and OpenAI API to analyze m
 
 The bot uses a chain of spam filters to evaluate each incoming message. These filters can be simple rule-based checks or more complex AI-driven analyses. If a message is identified as spam, the bot can take actions such as deleting the message or banning the user
 
+## How to run it without B4CKSP4CE infrastructure
+
+1. Clone the repository and navigate to the project directory `cd tg_antispam_bot`
+2. Build the Docker image using `docker build -t tg_antispam_bot .`
+3. Run the bot using `docker run --env TELEGRAM_BOT_TOKEN=<BOT_TOKEN> -v data:/app/data tg_antispam_bot --polling --no-swynca`. 
+Optionally, you can provide the `OPENAI_API_KEY` env variable for filtering messages using OpenAI API.
+
+
+## Run arguments
+
+- `--polling`: Use polling instead of webhooks
+- `--no-swynca`: Disable Swynca for admin list providing, use message chat admins instead
+
 ## Environment Variables
 
 The following environment variables are used to configure the bot:
 
-- `OPENAI_API_KEY`: API key for accessing OpenAI services.
-- `OPENAI_PROXY_URL`: Proxy URL for OpenAI requests
-- `TELEGRAM_API_URL`: Base URL for Telegram API
 - `TELEGRAM_BOT_TOKEN`: Token for authenticating the Telegram bot
-- `WEBHOOK_PORT`: Port on which the webhook server will run
-- `CONFIG_FOLDER_PATH`: Path to the configuration files directory
-- `SWYNCA_API_KEY`: API key for accessing Swynca
+- `OPENAI_API_KEY`: API key for accessing OpenAI services (Optional)
+- `OPENAI_PROXY_URL`: Proxy URL for OpenAI requests (Optional)
+- `TELEGRAM_API_URL`: Base URL for Telegram API (Optional, default: 'https://api.telegram.org')
+- `WEBHOOK_PORT`: Port on which the webhook server will run (Optional, default: `8000`)
+- `CONFIG_FOLDER_PATH`: Path to the configuration files directory (Optional, default: `config`)
+- `SWYNCA_API_KEY`: API key for accessing Swynca (Optional if --no-swynca flag is used)
 - `TESSERACT_PATH`: Path to the tesseract executable (Optional, default: '/usr/bin/tesseract')
 - `TESSERACT_LANG`: Language code for tesseract OCR (Optional, default: 'rus')
 ## Contribution

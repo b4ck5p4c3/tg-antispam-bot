@@ -66,9 +66,10 @@ class Config(BaseModel):
         """
         return user_id in self.trusted_user_ids
 
-    def is_admin(self, user_id: int) -> bool:
+    async def is_admin(self, user_id: int, chat_id: int) -> bool:
         """
         Check if user is admin.
         :param user_id: User id.
+        :param chat_id: Chat id.
         """
-        return self.__admin_provider.is_admin(user_id)
+        return await self.__admin_provider.is_admin(user_id, chat_id)

@@ -1,6 +1,6 @@
 from functools import wraps
 
-from telegram import Update, User
+from telegram import Update, User, Chat
 from telegram.ext import CallbackContext
 
 from src.TelegramHelper import TelegramHelper
@@ -15,7 +15,8 @@ def admin_command(func):
     @wraps(func)
     async def wrapper(self, update: Update, context: CallbackContext, *args, **kwargs):
         user: User = update.effective_user
-        if not self.config.is_admin(user.id):
+        chat: Chat = update.effective_chat
+        if not self.config.is_admin(user.id, chat.id):
             self.logger.info(f"Unauthorized access attempt by user {user.id}")
             return
         return await func(self, update, context, *args, **kwargs)

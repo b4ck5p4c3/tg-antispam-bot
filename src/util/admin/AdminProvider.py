@@ -3,10 +3,11 @@ import time
 from logging import Logger
 
 import requests
+from telegram import Update
 
 
 class AdminProvider:
     """Provides a list of admin users"""
 
-    def is_admin(self, user_id: int) -> bool:
+    async def is_admin(self, user_id: int, chat_id:int) -> bool:
         raise NotImplementedError()

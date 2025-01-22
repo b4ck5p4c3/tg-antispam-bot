@@ -41,7 +41,7 @@ class SpamFilter:
         await self.telegram_helper.try_remove_message(context, update.message)
         await self.telegram_helper.ban_message_author(context, update.message)
 
-    def _is_message_should_be_ignored(self, update: EnrichedUpdate) -> bool:
+    async def _is_message_should_be_ignored(self, update: EnrichedUpdate) -> bool:
         """Checks if the message should be ignored."""
 
         if update.message is None:
@@ -54,7 +54,7 @@ class SpamFilter:
              f"User {update.message.from_user.id} is trusted, skipping spam check"),
             (not self.config.is_chat_moderated(update.message.chat_id), 
              f"Chat {update.message.chat_id} is not moderated, skipping spam check"),
-            (self.config.is_admin(update.message.from_user.id),
+            (await self.config.is_admin(update.effective_user.id, update.effective_chat.id),
              f"User {update.message.from_user.id} is admin, skipping spam check"),
         ]
 
@@ -78,7 +78,7 @@ class SpamFilter:
     @final
     async def apply(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Applies the spam filter to the incoming message."""
-        if self._is_message_should_be_ignored(update) :
+        if await self._is_message_should_be_ignored(update) :
             return
         if await self._is_spam(update, context):
             await self._on_spam(update, context)
