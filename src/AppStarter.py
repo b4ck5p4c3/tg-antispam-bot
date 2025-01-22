@@ -4,13 +4,11 @@ from http import HTTPStatus
 import uvicorn
 from asgiref.wsgi import WsgiToAsgi
 from flask import Flask, Response, request
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ChatMemberHandler, ApplicationBuilder
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ApplicationBuilder
 
 from src.handlers.ConfigurationCommandsHandler import ConfigurationCommandsHandler
-from src.handlers.LolsOnJoinSpamCheck import LolsOnJoinSpamCheck
 from src.handlers.spam_filters.FilterFactory import FilterFactory
 from src.handlers.spam_filters.SpamFilter import SpamFilter
-from src.handlers.spam_filters.lols.LolsSpamFilter import LolsSpamFilter
 from src.handlers.spam_filters.openai.OpenAISpamFilter import OpenAIFilterConfig
 from src.locale.LocaleFactory import LocaleFactory
 from src.telegram.EnrichedUpdate import EnrichedUpdate
@@ -88,10 +86,8 @@ class BotBuilder:
             raise ValueError("Telegram application is not set")
         config = self.__get_config()
         antispam_filters: SpamFilter = self.__get_antispam_filter_chain(config)
-        lols_spam_filter = LolsSpamFilter(config)
 
         configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(config)
-        lols_on_join_spam_check: LolsOnJoinSpamCheck = LolsOnJoinSpamCheck(config, lols_spam_filter)
 
         self.telegram_application.add_handler(CommandHandler("moderate", self.__with_enriched_update(
             configuration_commands_handler.handle_add_moderable_chat)))
@@ -99,9 +95,6 @@ class BotBuilder:
             configuration_commands_handler.handle_remove_moderable_chat)))
         self.telegram_application.add_handler(
             MessageHandler(filters.ALL, self.__with_enriched_update(antispam_filters.apply)))
-        self.telegram_application.add_handler(
-            ChatMemberHandler(self.__with_enriched_update(lols_on_join_spam_check.handle_user_join),
-                              ChatMemberHandler.CHAT_MEMBER))
 
     def __get_config(self) -> Config:
         admin_provider: AdminProvider = self.__admin_provider_supplier()

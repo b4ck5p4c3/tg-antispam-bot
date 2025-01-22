@@ -3,22 +3,11 @@ import os
 from argparse import ArgumentParser
 from multiprocessing.managers import Namespace
 
-from telegram.ext import MessageHandler, filters, CommandHandler, ChatMemberHandler, Application
 from telegram import Update
+from telegram.ext import Application
 
 from src.AppStarter import get_telegram_application_webhook, get_webserver, get_telegram_application_polling, BotBuilder
-from src.handlers.ConfigurationCommandsHandler import ConfigurationCommandsHandler
-from src.handlers.LolsOnJoinSpamCheck import LolsOnJoinSpamCheck
-from src.handlers.spam_filters.FilterFactory import FilterFactory
-from src.handlers.spam_filters.lols.LolsSpamFilter import LolsSpamFilter
-from src.handlers.spam_filters.openai.OpenAISpamFilter import OpenAIFilterConfig
-from src.locale.LocaleFactory import LocaleFactory
-from src.telegram.EnrichedUpdate import EnrichedUpdate
-from src.util.admin.AdminProvider import AdminProvider
 from src.util.LoggerUtil import LoggerUtil
-from src.util.admin.SwyncaAdminProvider import SwyncaAdminProvider
-from src.util.config.Config import Config
-from src.util.config.JsonModelRepo import JsonModelRepo
 
 URL = os.getenv("TELEGRAM_API_URL", "https://api.telegram.org")
 PORT = int(os.getenv("WEBHOOK_PORT", 8000))
