@@ -1,6 +1,5 @@
 import asyncio
 from logging import Logger
-from venv import logger
 
 from requests import JSONDecodeError
 from telegram.ext import CallbackContext
@@ -60,7 +59,7 @@ class TelegramHelper:
 
     async def audit_log(self, context: CallbackContext, source_message: Message, message: str) -> None:
         audit_log_chat_id = self.config.get_audit_log_chat_id()
-        logger.info(f"Sending audit log message `{message}` to chat {audit_log_chat_id}")
+        self.logger.info(f"Sending audit log message `{message}` to chat {audit_log_chat_id}")
         if audit_log_chat_id is None:
             await self.send_message(context, chat_id=source_message.chat_id, text=self.__get_audit_log_message(message))
             return

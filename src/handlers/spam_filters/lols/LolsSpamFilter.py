@@ -1,9 +1,7 @@
 import time
-from datetime import datetime
-from threading import Thread, Timer
+from threading import Timer
 from typing import Dict
 from venv import logger
-from xmlrpc.client import DateTime
 
 from telegram import Update
 from telegram.ext import CallbackContext

@@ -1,7 +1,3 @@
-from pyexpat.errors import messages
-from typing import Dict
-
-from telegram import MessageEntity
 from telegram.error import TelegramError
 from telegram.ext import CallbackContext
 
