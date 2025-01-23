@@ -12,7 +12,7 @@ from src.util.config.Config import Config
 
 class LolsSpamFilter(HTTPJsonSpamFilter):
     __LOLS_API_BASE_URL = "https://api.lols.bot"
-    __LOLS_CHECK_API = f"{__LOLS_API_BASE_URL}/account?id={id}"
+    __LOLS_CHECK_API = f"{__LOLS_API_BASE_URL}/account?id="
     __LOLS_GET_BANNED_IDS_API = f"{__LOLS_API_BASE_URL}/lists"
 
     __CACHE_UPDATE_INTERVAL_SEC = 60*60
@@ -36,7 +36,7 @@ class LolsSpamFilter(HTTPJsonSpamFilter):
         if self.__is_in_cache(user_id):
             logger.info(f"User {user_id} is in cache")
             return True
-        request_url = self.__LOLS_CHECK_API.format(id=user_id)
+        request_url = self.__LOLS_CHECK_API+str(user_id)
         account_status = self.try_send_request(request_url, [200])
         if not account_status:
             return False
