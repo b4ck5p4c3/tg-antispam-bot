@@ -1,5 +1,6 @@
 from os import getenv
 
+from src.handlers.spam_filters.ForwardSpamFilter.ForwardSpamFilter import ForwardSpamFilter
 from src.handlers.spam_filters.OCRFilter import OCRFilter
 from src.handlers.spam_filters.SpamFilter import SpamFilter
 from src.handlers.spam_filters.lols.LolsSpamFilter import LolsSpamFilter
@@ -27,6 +28,7 @@ class FilterFactory:
         tesseract_path = getenv("TESSERACT_PATH", "/usr/bin/tesseract")
         tesseract_lang = getenv("TESSERACT_LANG", "rus")
         return FilterFactory.Builder(LolsSpamFilter(config)) \
+            .then(ForwardSpamFilter(config)) \
             .then(OCRFilter(config, tesseract_path, tesseract_lang)) \
             .then(OpenAISpamFilter(config, openai_config)) \
             .build()

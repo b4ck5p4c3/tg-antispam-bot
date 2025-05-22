@@ -8,6 +8,7 @@ from src.util.config.ModelRepo import ModelRepo
 
 class Config(BaseModel):
     trusted_user_ids: list[int] = []
+    banned_channel_ids: list[int] = []
     moderated_chat_ids: list[int] = []
     audit_log_chat_id: Optional[int] = None
     __config_repo: ModelRepo = None
@@ -57,6 +58,19 @@ class Config(BaseModel):
         Remove audit log chat.
         """
         self.audit_log_chat_id = None
+        self.__config_repo.save(self)
+
+    def is_channel_banned(self, community_id: int) -> bool:
+        """
+        Check if community is banned.
+        """
+        return community_id in self.banned_channel_ids
+
+    def ban_channel(self, community_id: int):
+        """
+        Ban community.
+        """
+        self.banned_channel_ids.append(community_id)
         self.__config_repo.save(self)
 
     def get_audit_log_chat_id(self) -> Optional[int]:

@@ -1,18 +1,32 @@
 from telegram.error import TelegramError
 from telegram.ext import CallbackContext
 
-from src.handlers.BaseHandler import BaseHandler, admin_command
+from src.handlers.BaseHandler import BaseHandler, admin_command, get_argument_value, get_int_argument_value
+from src.handlers.spam_filters.ForwardSpamFilter.ForwardSpamFilter import get_forward_channel_id, get_channel_id
 from src.telegram.EnrichedUpdate import EnrichedUpdate
 
 BANNED_USER_MESSAGE_MAX_LEN_AUDIT = 100
 
+
+def _extract_ban_user_id(update: EnrichedUpdate) -> int | None:
+    if update.message.reply_to_message is not None:
+        return update.message.reply_to_message.from_user.id
+    user_id = get_int_argument_value(update, 1)
+    return user_id
+
+def _extract_community_id(update: EnrichedUpdate) -> int | None:
+    reply = update.message.reply_to_message
+    if reply is not None and reply.forward_origin is not None:
+        return get_channel_id(reply.forward_origin)
+    community_id = get_int_argument_value(update, 1)
+    return community_id
 
 class ManualModerationCommandsHandler(BaseHandler):
 
     @admin_command
     async def handle_ban_user(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Handles the /ban command."""
-        ban_user_id = self.__extract_ban_user_id(update)
+        ban_user_id = _extract_ban_user_id(update)
         if await self.config.is_admin(ban_user_id, update.effective_chat.id):
             await self.telegram_helper.send_message(context, chat_id=update.message.chat_id,
                                                     text=update.locale.durachok)
@@ -45,12 +59,30 @@ class ManualModerationCommandsHandler(BaseHandler):
             await self.telegram_helper.audit_log(context, update.message, update.locale.audit_log_user_banned_by_id
                                                  .format(banned_id=ban_user_id, banned_by=update.effective_user, chat=update.effective_chat))
 
-
-
-    def __extract_ban_user_id(self, update: EnrichedUpdate) -> int:
-        if update.message.reply_to_message is not None:
-            return update.message.reply_to_message.from_user.id
-        elif update.message.text is not None:
-            splitted = update.message.text.split(" ")
-            if len(splitted) > 1 and splitted[1].isdigit():
-                return int(splitted[1])
+    @admin_command
+    async def handle_ban_community(self, update: EnrichedUpdate, context: CallbackContext) -> None:
+        """Handles the /banc command."""
+        community_id = _extract_community_id(update)
+        if community_id is None:
+            await self.telegram_helper.send_message(context, chat_id=update.message.chat_id,
+                                                    text=update.locale.ban_community_not_found)
+            await self.telegram_helper.audit_log(context, update.message, update.locale.audit_log_community_not_found)
+            return
+        if self.config.is_channel_banned(community_id):
+            await self.telegram_helper.send_message(context, chat_id=update.message.chat_id,
+                                                    text=update.locale.community_already_banned.format(
+                                                        community_id=community_id))
+            return
+        try:
+            self.config.ban_channel(community_id)
+            await self.telegram_helper.send_temporary_message(context, chat_id=update.message.chat_id,
+                                                    text=update.locale.ban_community_success.format(
+                                                        community_id=community_id))
+            await self.telegram_helper.audit_log(context, update.message, update.locale.audit_log_community_banned_by_id
+                                                 .format(community_id=community_id, banned_by=update.effective_user,
+                                                         chat=update.effective_chat))
+        except Exception as e:
+            self.logger.error(f"Failed to ban community {community_id}: {e}")
+            await self.telegram_helper.send_message(context, chat_id=update.message.chat_id,
+                                                    text=update.locale.ban_community_failed.format(
+                                                        community_id=community_id, error=str(e)))

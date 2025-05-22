@@ -96,6 +96,7 @@ class BotBuilder:
         self.__add_command_handler("set_audit_log", configuration_commands_handler.set_channel_as_audit_log)
         self.__add_command_handler("unset_audit_log", configuration_commands_handler.unset_channel_as_audit_log)
         self.__add_command_handler("ban", manual_commands_handler.handle_ban_user)
+        self.__add_command_handler("banc", manual_commands_handler.handle_ban_community)
         self.telegram_application.add_handler(MessageHandler(filters.ALL, self.__with_enriched_update(antispam_filters.apply)))
 
     def __add_command_handler(self, command: str, handler):

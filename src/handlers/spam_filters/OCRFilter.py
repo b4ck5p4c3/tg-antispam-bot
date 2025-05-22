@@ -2,7 +2,7 @@ import io
 
 import pytesseract
 from PIL import Image
-from pytesseract import TesseractNotFoundError
+from pytesseract import TesseractNotFoundError, TesseractError
 from telegram import PhotoSize
 from telegram.ext import CallbackContext
 
@@ -38,6 +38,6 @@ class OCRFilter(SpamFilter):
         image = Image.open(io.BytesIO(image_bytes))
         try:
             return pytesseract.image_to_string(image, lang=self.tesseract_lang)
-        except TesseractNotFoundError:
+        except (TesseractNotFoundError, TesseractError):
             self.logger.error("Tesseract not found, please install Tesseract for OCR support")
             return ""

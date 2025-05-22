@@ -19,3 +19,9 @@ class Locale(BaseModel):
     audit_log_user_banned_by_id: str
     ban_user_not_found: str
     durachok: str
+    ban_community_not_found: str
+    ban_community_success: str
+    ban_community_failed: str
+    community_already_banned: str
+    audit_log_community_banned_by_id: str
+    audit_log_community_not_found: str

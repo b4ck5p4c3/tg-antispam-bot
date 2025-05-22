@@ -24,6 +24,26 @@ def admin_command(func):
 
     return wrapper
 
+def get_argument_value(update: Update, index: int) -> str | None:
+    """
+    Extracts the argument value from the command message.
+    """
+    if update.message is None or update.message.text is None:
+        return None
+    args = update.message.text.split(" ")
+    if len(args) > index:
+        return args[index]
+    return None
+
+def get_int_argument_value(update: Update, index: int) -> int | None:
+    """
+    Extracts the integer argument value from the command message.
+    """
+    arg_value = get_argument_value(update, index)
+    if arg_value is not None and arg_value.isdigit():
+        return int(arg_value)
+    return None
+
 
 class BaseHandler:
     __logger_name = "GenericHandler"

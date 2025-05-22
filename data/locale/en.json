@@ -15,5 +15,11 @@
   "audit_log_user_banned_by_reply": "User [{banned_user.first_name}](tg://user?id={banned_user.id}) ({banned_user.id}) has been banned by [{banned_by.first_name}](tg://user?id={banned_by.id}) ({banned_by.id}) in chat **{chat.title}** for message: ```{message}```",
     "audit_log_user_banned_by_id": "User {banned_id} has been banned by [{banned_by.first_name}](tg://user?id={banned_by.id}) ({banned_by.id}) in chat **{chat.title}** using id",
     "ban_user_not_found": "Who exactly do you want to ban? Reply to the message or provide the user ID. Example: `/ban 123456789`",
-  "durachok": "durachok?"
+  "durachok": "durachok?",
+  "ban_community_not_found": "Which community do you want to ban? Provide the community ID. Example: `/banc 123456789`",
+  "ban_community_success": "Community {community_id} has been banned",
+  "ban_community_failed": "Could not ban community {community_id}. Error: `{error}`",
+  "audit_log_community_banned_by_id": "Community {community_id} has been banned by [{banned_by.first_name}](tg://user?id={banned_by.id}) ({banned_by.id}) in chat **{chat.title}**",
+  "audit_log_community_not_found": "Community ban failed: No community ID provided by [{banned_by.first_name}](tg://user?id={banned_by.id}) ({banned_by.id}) in chat **{chat.title}**",
+  "community_already_banned": "Community {community_id} is already banned"
 }

@@ -13,7 +13,8 @@ The bot uses a chain of spam filters to evaluate each incoming message. These fi
 
 1. Clone the repository and navigate to the project directory `cd tg_antispam_bot`
 2. Build the Docker image using `docker build -t tg_antispam_bot .`
-3. Run the bot using `docker run --env TELEGRAM_BOT_TOKEN=<BOT_TOKEN> -v data:/app/data tg_antispam_bot --polling --no-swynca`. 
+3. Run the bot using `docker run --env TELEGRAM_BOT_TOKEN=<BOT_TOKEN> -v data:/app/data tg_antispam_bot --polling --no-swynca`.
+4. Enable moderation in the chat by sending `/moderate` command.
 Optionally, you can provide the `OPENAI_API_KEY` env variable for filtering messages using OpenAI API.
 
 ## Available commands
@@ -21,6 +22,7 @@ Optionally, you can provide the `OPENAI_API_KEY` env variable for filtering mess
 - `/moderate`: Add chat to the list of moderated chats
 - `/abandon`: Remove chat from the list of moderated chats
 - `/ban`: Ban user from the chat
+- `/banc`: Restrict reposting of messages from the chat (only first message)
 - `/set_audit_log`: Set chat for [audit logging](#audit-logging)
 - `/unset_audit_log`: Unset chat for audit logging
 
