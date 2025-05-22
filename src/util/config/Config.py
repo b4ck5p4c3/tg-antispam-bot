@@ -70,6 +70,8 @@ class Config(BaseModel):
         """
         Ban community.
         """
+        if community_id >= 0:
+            community_id = int(f"-100{community_id}")
         self.banned_channel_ids.append(community_id)
         self.__config_repo.save(self)
 
