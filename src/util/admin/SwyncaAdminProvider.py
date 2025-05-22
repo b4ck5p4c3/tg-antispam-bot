@@ -12,7 +12,7 @@ class SwyncaAdminProvider(AdminProvider):
 
     CACHE_LIFETIME_SEC = 60
     __CACHE_UPDATED_AT = 0
-    SWYNCA_API_URL = "https://re-swynca.app.0x08.in/"
+    SWYNCA_API_URL = "https://swynca.bksp.in/"
 
     def __init__(self, logger: Logger, token=None):
         self.admins = None
