@@ -6,6 +6,16 @@ from src.util.admin.AdminProvider import AdminProvider
 from src.util.config.ModelRepo import ModelRepo
 
 
+def get_community_id(community_id: int) -> int:
+    """
+    Get community id from channel id.
+    :param community_id: Channel id.
+    :return: Community id.
+    """
+    if community_id > 0:
+        community_id = int(f"-100{community_id}")
+    return community_id
+
 class Config(BaseModel):
     trusted_user_ids: list[int] = []
     banned_channel_ids: list[int] = []
@@ -64,15 +74,13 @@ class Config(BaseModel):
         """
         Check if community is banned.
         """
-        return community_id in self.banned_channel_ids
+        return get_community_id(community_id) in self.banned_channel_ids
 
     def ban_channel(self, community_id: int):
         """
         Ban community.
         """
-        if community_id >= 0:
-            community_id = int(f"-100{community_id}")
-        self.banned_channel_ids.append(community_id)
+        self.banned_channel_ids.append(get_community_id(community_id))
         self.__config_repo.save(self)
 
     def get_audit_log_chat_id(self) -> Optional[int]:
