@@ -23,8 +23,10 @@ class TelegramHelper:
             self.logger.warning(f"Failed to remove message {message.message_id}: {e}")
 
     async def delete_message_with_delay(self, context: CallbackContext, message: Message, delay_seconds: int) -> None:
+        delay_seconds = delay_seconds or 30
         self.logger.debug(f"Deleting message {message.message_id} with delay {delay_seconds}")
         context.job_queue.run_once(lambda ctx: self.try_remove_message(context, message), delay_seconds)
+
 
     async def ban_message_author(self, context: CallbackContext, message: Message) -> None:
         user_id = message.from_user.id

@@ -78,6 +78,7 @@ class ManualModerationCommandsHandler(BaseHandler):
             await self.telegram_helper.send_temporary_message(context, chat_id=update.message.chat_id,
                                                     text=update.locale.ban_community_success.format(
                                                         community_id=community_id))
+            await self.telegram_helper.delete_message_with_delay(context, update.message)
             await self.telegram_helper.audit_log(context, update.message, update.locale.audit_log_community_banned_by_id
                                                  .format(community_id=community_id, banned_by=update.effective_user,
                                                          chat=update.effective_chat))

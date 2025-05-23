@@ -1,5 +1,6 @@
 from typing import Optional
 
+from telegram import Message
 from telegram.ext import CallbackContext
 
 from src.TelegramHelper import TelegramHelper
@@ -21,6 +22,9 @@ def extract_message_text(update: EnrichedUpdate) -> Optional[str]:
 class SpamFilter:
     _filter_name = "Generic Filter"
     __logger_name = "SpamFilter"
+    __ignored_message_types = [
+        Message.left_chat_member, Message.new_chat_members
+    ]
 
     def __init__(self, config: Config, next_filter: Optional['SpamFilter'] = None):
         self.config = config
@@ -47,8 +51,8 @@ class SpamFilter:
             self.logger.debug("Update is not a message, skipping spam check")
             return True
         conditions = [
-            (extract_message_text(update) is None and len(update.message.photo) == 0,
-             "Message is not text or image, skipping spam check"),
+            (self.__is_message_type_not_supported(update.message),
+            f"Message {update.message.id} type is blacklisted, skipping spam check"),
             (self.config.is_user_trusted(update.message.from_user.id),
              f"User {update.message.from_user.id} is trusted, skipping spam check"),
             (not self.config.is_chat_moderated(update.message.chat_id),
@@ -62,6 +66,10 @@ class SpamFilter:
                 self.logger.debug(f"{message}")
                 return True
         return False
+
+    @staticmethod
+    def __is_message_type_not_supported(message: Message) -> bool:
+        return message.left_chat_member is not None or len(message.new_chat_members)!=0
 
     async def _on_pass(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Adds the user to the trusted list if the message is not spam."""
