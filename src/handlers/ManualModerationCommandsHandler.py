@@ -5,7 +5,7 @@ from src.handlers.BaseHandler import BaseHandler, admin_command, get_argument_va
 from src.handlers.spam_filters.ForwardSpamFilter.ForwardSpamFilter import get_forward_channel_id, get_channel_id
 from src.telegram.EnrichedUpdate import EnrichedUpdate
 
-BANNED_USER_MESSAGE_MAX_LEN_AUDIT = 100
+BANNED_USER_MESSAGE_MAX_LEN_AUDIT = 200
 
 
 def _extract_ban_user_id(update: EnrichedUpdate) -> int | None:
@@ -27,23 +27,24 @@ class ManualModerationCommandsHandler(BaseHandler):
     async def handle_ban_user(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Handles the /ban command."""
         ban_user_id = _extract_ban_user_id(update)
+        await self.telegram_helper.delete_message_with_delay(context, update.message, 20)
         if await self.config.is_admin(ban_user_id, update.effective_chat.id):
             await self.telegram_helper.send_message(context, chat_id=update.message.chat_id,
                                                     text=update.locale.durachok)
             return
         if ban_user_id is None:
-            await self.telegram_helper.send_message(context, chat_id=update.message.chat_id,
-                                                    text=update.locale.ban_user_not_found)
+            await self.telegram_helper.send_temporary_message(context, chat_id=update.message.chat_id,
+                                                    text=update.locale.ban_user_not_found, remove_in_seconds=120)
             return
         chat_id = update.effective_chat.id
         try:
             await self.telegram_helper.ban_chat_member(context, chat_id=chat_id, user_id=ban_user_id)
         except TelegramError as e:
             self.logger.warning(f"Failed to ban user {ban_user_id}: {e}")
-            await self.telegram_helper.send_message(context, chat_id=chat_id,
+            await self.telegram_helper.send_temporary_message(context, chat_id=chat_id,
                                                     text=update.locale.ban_failed.format(
                                                         user_id=ban_user_id, error=e.message
-                                                    ))
+                                                    ), remove_in_seconds=120)
             return
         if update.message.reply_to_message is not None:
             await self.telegram_helper.try_remove_message(context, update.message.reply_to_message)
