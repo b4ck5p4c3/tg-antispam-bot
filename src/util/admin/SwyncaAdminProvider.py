@@ -41,7 +41,7 @@ class SwyncaAdminProvider(AdminProvider):
             return []
         else:
             admins = response.json()
-            admins = filter(lambda admin: admin["status"]=="active", admins)
+            admins = filter(lambda admin: admin["status"] == "active", admins)
             self.admins = [
                 int(admin['telegramMetadata']['telegramId']) for admin in admins
                 if 'telegramMetadata' in admin and 'telegramId' in admin['telegramMetadata']
@@ -57,6 +57,7 @@ class SwyncaAdminProvider(AdminProvider):
         elif self._cache_outdated():
             self.logger.debug("Cache is outdated, updating")
             return True
+        return False
 
     def _cache_outdated(self):
         cache_lifetime = time.time() - self.__CACHE_UPDATED_AT

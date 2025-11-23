@@ -16,6 +16,7 @@ def get_community_id(community_id: int) -> int:
         community_id = int(f"-100{community_id}")
     return community_id
 
+
 class Config(BaseModel):
     trusted_user_ids: list[int] = []
     banned_channel_ids: list[int] = []

@@ -44,7 +44,6 @@ class ConfigurationCommandsHandler(BaseHandler):
         self.config.stop_chat_moderating(chat_id)
         self.logger.info(f"Chat {chat_id} removed from the moderable list.")
 
-
     @admin_command
     async def set_channel_as_audit_log(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Handles the /set_audit_log command."""
@@ -65,7 +64,9 @@ class ConfigurationCommandsHandler(BaseHandler):
                                                             user=update.effective_user))
         else:
             await self.telegram_helper.send_message(context, chat_id=new_chat.id,
-                                                    text=update.locale.audit_log_chat_set.format(chat_id=new_chat.id, chat_name=new_chat.title, user=update.effective_user))
+                                                    text=update.locale.audit_log_chat_set.format(chat_id=new_chat.id,
+                                                                                                 chat_name=new_chat.title,
+                                                                                                 user=update.effective_user))
         self.config.set_audit_log_chat(new_chat.id)
         self.logger.info(f"Chat {new_chat.id} set as audit log chat by user {update.effective_user.id}")
 
@@ -75,10 +76,11 @@ class ConfigurationCommandsHandler(BaseHandler):
         current_audit_log_chat_id = self.config.get_audit_log_chat_id()
         if current_audit_log_chat_id is None:
             await self.telegram_helper.send_temporary_message(context, chat_id=update.effective_chat.id,
-                                                    text=update.locale.audit_log_chat_not_found)
+                                                              text=update.locale.audit_log_chat_not_found)
             return
         self.config.remove_audit_log_chat()
         for chat_id in {current_audit_log_chat_id, update.effective_chat.id}:
             await self.telegram_helper.send_message(context, chat_id=chat_id,
-                                                    text=update.locale.audit_log_chat_removed.format(user=update.effective_user))
+                                                    text=update.locale.audit_log_chat_removed.format(
+                                                        user=update.effective_user))
         self.logger.info(f"Chat {current_audit_log_chat_id} unset as audit log chat by user {update.effective_user.id}")

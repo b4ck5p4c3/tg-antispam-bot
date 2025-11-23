@@ -20,15 +20,16 @@ def get_channel_id(origin: MessageOrigin) -> Optional[int]:
     else:
         return None
 
+
 def get_forward_channel_id(update: Update) -> Optional[int]:
     forward_origin = update.message.forward_origin
     return get_channel_id(forward_origin)
+
 
 class ForwardSpamFilter(HTTPJsonSpamFilter):
 
     def __init__(self, config: Config):
         super().__init__(config)
-
 
     async def _is_spam(self, update: Update, context: CallbackContext) -> bool:
         """Checks if message is spam. Returns true if message is spam"""
@@ -41,5 +42,3 @@ class ForwardSpamFilter(HTTPJsonSpamFilter):
             else:
                 self.logger.info(f"Message from channel {channel_id} is not banned")
         return False
-
-

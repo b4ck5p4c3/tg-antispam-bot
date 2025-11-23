@@ -24,6 +24,7 @@ def admin_command(func):
 
     return wrapper
 
+
 def get_argument_value(update: Update, index: int) -> str | None:
     """
     Extracts the argument value from the command message.
@@ -34,6 +35,7 @@ def get_argument_value(update: Update, index: int) -> str | None:
     if len(args) > index:
         return args[index]
     return None
+
 
 def get_int_argument_value(update: Update, index: int) -> int | None:
     """

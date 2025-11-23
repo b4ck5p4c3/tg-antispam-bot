@@ -52,7 +52,7 @@ class SpamFilter:
             return True
         conditions = [
             (self.__is_message_type_not_supported(update.message),
-            f"Message {update.message.id} type is blacklisted, skipping spam check"),
+             f"Message {update.message.id} type is blacklisted, skipping spam check"),
             (self.config.is_user_trusted(update.message.from_user.id),
              f"User {update.message.from_user.id} is trusted, skipping spam check"),
             (not self.config.is_chat_moderated(update.message.chat_id),
@@ -69,7 +69,7 @@ class SpamFilter:
 
     @staticmethod
     def __is_message_type_not_supported(message: Message) -> bool:
-        return message.left_chat_member is not None or len(message.new_chat_members)!=0
+        return message.left_chat_member is not None or len(message.new_chat_members) != 0
 
     async def _on_pass(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Adds the user to the trusted list if the message is not spam."""

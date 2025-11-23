@@ -45,16 +45,19 @@ async def start_webhook(telegram_application: Application):
         await webserver.serve()
         await telegram_application.stop()
 
+
 def __get_application(polling: bool) -> Application:
     if polling:
         return get_telegram_application_polling(TOKEN, URL)
     return get_telegram_application_webhook(TOKEN, URL)
+
 
 def __set_admin_provider(bot_builder: BotBuilder):
     if args.no_swynca:
         bot_builder.channel_admin_provider()
         return
     bot_builder.swynca_admin_provider()
+
 
 if __name__ == "__main__":
     main()
