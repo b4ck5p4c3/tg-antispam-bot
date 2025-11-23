@@ -41,6 +41,7 @@ class SwyncaAdminProvider(AdminProvider):
             return []
         else:
             admins = response.json()
+            admins = filter(lambda admin: admin["status"]=="active", admins)
             self.admins = [
                 int(admin['telegramMetadata']['telegramId']) for admin in admins
                 if 'telegramMetadata' in admin and 'telegramId' in admin['telegramMetadata']

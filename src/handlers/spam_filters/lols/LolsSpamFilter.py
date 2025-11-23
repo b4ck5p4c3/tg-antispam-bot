@@ -55,6 +55,7 @@ class LolsSpamFilter(HTTPJsonSpamFilter):
         for banned_ids_list in self.__CACHE_LIST_REQUESTS_BY_TIMESTAMP.values():
             if user_id in banned_ids_list:
                 return True
+        return False
 
 
     def __update_cache(self):
