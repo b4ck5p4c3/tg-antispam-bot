@@ -3,7 +3,7 @@ from typing import TypeVar, Type
 
 from pydantic import BaseModel
 
-from src.util.config.ModelRepo import ModelRepo
+from src.util.data.ModelRepo import ModelRepo
 
 T = TypeVar('T', bound=BaseModel)
 

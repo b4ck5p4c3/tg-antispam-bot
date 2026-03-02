@@ -5,7 +5,7 @@ from src.handlers.spam_filters.OCRFilter import OCRFilter
 from src.handlers.spam_filters.SpamFilter import SpamFilter
 from src.handlers.spam_filters.lols.LolsSpamFilter import LolsSpamFilter
 from src.handlers.spam_filters.openai.OpenAISpamFilter import OpenAISpamFilter, OpenAIFilterConfig
-from src.util.config.Config import Config
+from src.util.data.Config import Config
 
 
 class FilterFactory:

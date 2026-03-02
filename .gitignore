@@ -7,3 +7,5 @@ data/openai_config.json
 .env
 
 ignore/
+
+AGENTS.md

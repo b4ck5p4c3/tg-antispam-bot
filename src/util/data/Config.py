@@ -3,7 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from src.util.admin.AdminProvider import AdminProvider
-from src.util.config.ModelRepo import ModelRepo
+from src.util.data.ModelRepo import ModelRepo
 
 
 def get_community_id(community_id: int) -> int:

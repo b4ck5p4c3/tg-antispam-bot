@@ -4,7 +4,7 @@ from logging import Logger
 from requests import JSONDecodeError
 from telegram.ext import CallbackContext
 
-from src.util.config.Config import Config
+from src.util.data.Config import Config
 from telegram import Message, ChatPermissions, File, Chat
 
 

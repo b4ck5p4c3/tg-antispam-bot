@@ -7,7 +7,7 @@ from telegram import Update
 from telegram.ext import CallbackContext
 
 from src.handlers.spam_filters.HTTPJsonSpamFilter import HTTPJsonSpamFilter
-from src.util.config.Config import Config
+from src.util.data.Config import Config
 
 
 class LolsSpamFilter(HTTPJsonSpamFilter):

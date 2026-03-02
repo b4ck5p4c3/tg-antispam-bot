@@ -7,7 +7,7 @@ from telegram import Update, MessageOriginChannel, MessageOrigin, MessageOriginC
 from telegram.ext import CallbackContext
 
 from src.handlers.spam_filters.HTTPJsonSpamFilter import HTTPJsonSpamFilter
-from src.util.config.Config import Config
+from src.util.data.Config import Config
 
 
 def get_channel_id(origin: MessageOrigin) -> Optional[int]:

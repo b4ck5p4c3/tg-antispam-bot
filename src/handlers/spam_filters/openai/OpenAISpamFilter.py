@@ -10,7 +10,7 @@ from telegram.ext import CallbackContext
 
 from src.handlers.spam_filters.SpamFilter import SpamFilter, extract_message_text
 from src.telegram.EnrichedUpdate import EnrichedUpdate
-from src.util.config.Config import Config
+from src.util.data.Config import Config
 
 default_prompt = """
 Please analyze the message provided below for signs of spam or fraud. Pay attention to the following aspects:

@@ -17,8 +17,8 @@ from src.util.LoggerUtil import LoggerUtil
 from src.util.admin.AdminProvider import AdminProvider
 from src.util.admin.ChannelAdminProvider import ChannelAdminProvider
 from src.util.admin.SwyncaAdminProvider import SwyncaAdminProvider
-from src.util.config.Config import Config
-from src.util.config.JsonModelRepo import JsonModelRepo
+from src.util.data.Config import Config
+from src.util.data.JsonModelRepo import JsonModelRepo
 from telegram import Update
 
 

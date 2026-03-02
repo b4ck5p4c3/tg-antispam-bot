@@ -6,7 +6,7 @@ from telegram.ext import CallbackContext
 from src.TelegramHelper import TelegramHelper
 from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.util.LoggerUtil import LoggerUtil
-from src.util.config.Config import Config
+from src.util.data.Config import Config
 
 
 def extract_message_text(update: EnrichedUpdate) -> Optional[str]:

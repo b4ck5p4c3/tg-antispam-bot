@@ -9,7 +9,7 @@ from telegram.ext import CallbackContext
 from src.handlers.spam_filters.SpamFilter import SpamFilter
 from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.telegram.PhotoSizeWithRecognition import PhotoSizeWithRecognition
-from src.util.config.Config import Config
+from src.util.data.Config import Config
 
 """Not a real spam filter, enriches the update attached images with OCR text"""
 

@@ -5,7 +5,7 @@ from telegram.ext import CallbackContext
 
 from src.TelegramHelper import TelegramHelper
 from src.util.LoggerUtil import LoggerUtil
-from src.util.config.Config import Config
+from src.util.data.Config import Config
 
 
 def admin_command(func):
