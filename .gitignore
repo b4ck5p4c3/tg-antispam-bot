@@ -2,7 +2,7 @@
 .idea/
 *.pyc
 local.env
-data/config.json
+data/state.json
 data/openai_config.json
 .env
 

@@ -53,7 +53,7 @@ The following environment variables are used to configure the bot:
 - `OPENAI_PROXY_URL`: Proxy URL for OpenAI requests (Optional)
 - `TELEGRAM_API_URL`: Base URL for Telegram API (Optional, default: 'https://api.telegram.org')
 - `WEBHOOK_PORT`: Port on which the webhook server will run (Optional, default: `8000`)
-- `CONFIG_FOLDER_PATH`: Path to the configuration files directory (Optional, default: `config`)
+- `DATA_FOLDER_PATH`: Path to the data files directory (Optional, default: `data`)
 - `SWYNCA_API_KEY`: API key for accessing Swynca (Optional if --no-swynca flag is used)
 - `TESSERACT_PATH`: Path to the tesseract executable (Optional, default: '/usr/bin/tesseract')
 - `TESSERACT_LANG`: Language code for tesseract OCR (Optional, default: 'rus')

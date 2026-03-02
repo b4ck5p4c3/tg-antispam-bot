@@ -14,7 +14,7 @@ class ConfigurationCommandsHandler(BaseHandler):
     async def handle_add_moderable_chat(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Handles the /moderate command."""
         chat_id = update.message.chat_id
-        if self.config.is_chat_moderated(chat_id):
+        if self.state.is_chat_moderated(chat_id):
             await self.telegram_helper.send_message(context, chat_id=chat_id,
                                                     text=update.locale.chat_already_moderated.format(chat_id=chat_id))
             return
@@ -26,7 +26,7 @@ class ConfigurationCommandsHandler(BaseHandler):
     async def handle_remove_moderable_chat(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Handles the /stop_moderate command."""
         chat_id = update.message.chat_id
-        if not self.config.is_chat_moderated(chat_id):
+        if not self.state.is_chat_moderated(chat_id):
             await self.telegram_helper.send_message(context, chat_id=chat_id,
                                                     text=update.locale.chat_not_moderated.format(chat_id=chat_id))
             return
@@ -36,19 +36,19 @@ class ConfigurationCommandsHandler(BaseHandler):
 
     def _add_chat_to_moderable(self, chat_id: int) -> None:
         """Adds a chat to the moderable list."""
-        self.config.moderate_chat(chat_id)
+        self.state.moderate_chat(chat_id)
         self.logger.info(f"Chat {chat_id} added to the moderable list.")
 
     def _remove_chat_from_moderable(self, chat_id: int) -> None:
         """Removes a chat from the moderable list."""
-        self.config.stop_chat_moderating(chat_id)
+        self.state.stop_chat_moderating(chat_id)
         self.logger.info(f"Chat {chat_id} removed from the moderable list.")
 
     @admin_command
     async def set_channel_as_audit_log(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Handles the /set_audit_log command."""
         new_chat = update.effective_chat
-        previous_chat_id: Optional[int] = self.config.get_audit_log_chat_id()
+        previous_chat_id: Optional[int] = self.state.get_audit_log_chat_id()
         if previous_chat_id is not None:
             chat_name = "Unknown"
             try:
@@ -67,18 +67,18 @@ class ConfigurationCommandsHandler(BaseHandler):
                                                     text=update.locale.audit_log_chat_set.format(chat_id=new_chat.id,
                                                                                                  chat_name=new_chat.title,
                                                                                                  user=update.effective_user))
-        self.config.set_audit_log_chat(new_chat.id)
+        self.state.set_audit_log_chat(new_chat.id)
         self.logger.info(f"Chat {new_chat.id} set as audit log chat by user {update.effective_user.id}")
 
     @admin_command
     async def unset_channel_as_audit_log(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Handles the /unset_audit_log command."""
-        current_audit_log_chat_id = self.config.get_audit_log_chat_id()
+        current_audit_log_chat_id = self.state.get_audit_log_chat_id()
         if current_audit_log_chat_id is None:
             await self.telegram_helper.send_temporary_message(context, chat_id=update.effective_chat.id,
                                                               text=update.locale.audit_log_chat_not_found)
             return
-        self.config.remove_audit_log_chat()
+        self.state.remove_audit_log_chat()
         for chat_id in {current_audit_log_chat_id, update.effective_chat.id}:
             await self.telegram_helper.send_message(context, chat_id=chat_id,
                                                     text=update.locale.audit_log_chat_removed.format(

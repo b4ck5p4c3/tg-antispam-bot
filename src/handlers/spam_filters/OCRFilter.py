@@ -9,15 +9,15 @@ from telegram.ext import CallbackContext
 from src.handlers.spam_filters.SpamFilter import SpamFilter
 from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.telegram.PhotoSizeWithRecognition import PhotoSizeWithRecognition
-from src.util.data.Config import Config
+from src.util.data.BotState import BotState
 
 """Not a real spam filter, enriches the update attached images with OCR text"""
 
 
 class OCRFilter(SpamFilter):
-    def __init__(self, config: Config, tesseract_executable_path: str, tesseract_lang: str,
+    def __init__(self, state: BotState, tesseract_executable_path: str, tesseract_lang: str,
                  next_filter: SpamFilter = None):
-        super().__init__(config, next_filter)
+        super().__init__(state, next_filter)
         pytesseract.pytesseract.tesseract_cmd = tesseract_executable_path if tesseract_executable_path else pytesseract.pytesseract.tesseract_cmd
         self.tesseract_lang = tesseract_lang
 

@@ -10,7 +10,7 @@ from telegram.ext import CallbackContext
 
 from src.handlers.spam_filters.SpamFilter import SpamFilter, extract_message_text
 from src.telegram.EnrichedUpdate import EnrichedUpdate
-from src.util.data.Config import Config
+from src.util.data.BotState import BotState
 
 default_prompt = """
 Please analyze the message provided below for signs of spam or fraud. Pay attention to the following aspects:
@@ -66,8 +66,8 @@ class OpenAISpamFilter(SpamFilter):
     __MESSAGE_SPAMNESS_MAP = {}
     _filter_name = "OpenAI"
 
-    def __init__(self, config: Config, openai_config: OpenAIFilterConfig):
-        super().__init__(config)
+    def __init__(self, state: BotState, openai_config: OpenAIFilterConfig):
+        super().__init__(state)
         token = os.environ.get("OPENAI_API_KEY")
         proxy_url = os.environ.get("OPENAI_PROXY_URL")
         if not token:

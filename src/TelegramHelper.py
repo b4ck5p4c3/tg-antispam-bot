@@ -4,16 +4,16 @@ from logging import Logger
 from requests import JSONDecodeError
 from telegram.ext import CallbackContext
 
-from src.util.data.Config import Config
+from src.util.data.BotState import BotState
 from telegram import Message, ChatPermissions, File, Chat
 
 
 class TelegramHelper:
     __telegram_api_request_retry_count = 3
 
-    def __init__(self, logger: Logger, config: Config):
+    def __init__(self, logger: Logger, state: BotState):
         self.logger = logger
-        self.config = config
+        self.state = state
 
     async def try_remove_message(self, context: CallbackContext, message: Message) -> None:
         try:
@@ -62,7 +62,7 @@ class TelegramHelper:
         return await self.__execute_telegram_api_request(context.bot.get_chat, chat_id=chat_id)
 
     async def audit_log(self, context: CallbackContext, source_message: Message, message: str) -> None:
-        audit_log_chat_id = self.config.get_audit_log_chat_id()
+        audit_log_chat_id = self.state.get_audit_log_chat_id()
         self.logger.info(f"Sending audit log message `{message}` to chat {audit_log_chat_id}")
         if audit_log_chat_id is None:
             await self.send_message(context, chat_id=source_message.chat_id, text=self.__get_audit_log_message(message))

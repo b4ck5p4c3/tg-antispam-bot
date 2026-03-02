@@ -30,7 +30,7 @@ class ManualModerationCommandsHandler(BaseHandler):
         """Handles the /ban command."""
         ban_user_id = _extract_ban_user_id(update)
         await self.telegram_helper.delete_message_with_delay(context, update.message, 20)
-        if await self.config.is_admin(ban_user_id, update.effective_chat.id):
+        if await self.state.is_admin(ban_user_id, update.effective_chat.id):
             await self.telegram_helper.send_message(context, chat_id=update.message.chat_id,
                                                     text=update.locale.durachok)
             return
@@ -75,13 +75,13 @@ class ManualModerationCommandsHandler(BaseHandler):
                                                     text=update.locale.ban_community_not_found)
             await self.telegram_helper.audit_log(context, update.message, update.locale.audit_log_community_not_found)
             return
-        if self.config.is_channel_banned(community_id):
+        if self.state.is_channel_banned(community_id):
             await self.telegram_helper.send_message(context, chat_id=update.message.chat_id,
                                                     text=update.locale.community_already_banned.format(
                                                         community_id=community_id))
             return
         try:
-            self.config.ban_channel(community_id)
+            self.state.ban_channel(community_id)
             await self.telegram_helper.send_temporary_message(context, chat_id=update.message.chat_id,
                                                               text=update.locale.ban_community_success.format(
                                                                   community_id=community_id))

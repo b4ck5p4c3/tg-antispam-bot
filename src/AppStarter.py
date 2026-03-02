@@ -17,7 +17,7 @@ from src.util.LoggerUtil import LoggerUtil
 from src.util.admin.AdminProvider import AdminProvider
 from src.util.admin.ChannelAdminProvider import ChannelAdminProvider
 from src.util.admin.SwyncaAdminProvider import SwyncaAdminProvider
-from src.util.data.Config import Config
+from src.util.data.BotState import BotState
 from src.util.data.JsonModelRepo import JsonModelRepo
 from telegram import Update
 
@@ -69,10 +69,10 @@ class BotBuilder:
         return wrapper
 
     def __get_locale_factory(self):
-        return LocaleFactory(os.path.join(self.__get_config_folder_path(), "locale"))
+        return LocaleFactory(os.path.join(self.__get_data_folder_path(), "locale"))
 
-    def __get_config_folder_path(self):
-        return os.getenv("CONFIG_FOLDER_PATH", os.path.join(self.workdir, "data"))
+    def __get_data_folder_path(self):
+        return os.getenv("DATA_FOLDER_PATH", os.path.join(self.workdir, "data"))
 
     def swynca_admin_provider(self):
         self.__admin_provider_supplier = self.__get_swynca_admin_provider
@@ -85,11 +85,11 @@ class BotBuilder:
     def build(self):
         if self.telegram_application is None:
             raise ValueError("Telegram application is not set")
-        config = self.__get_config()
-        antispam_filters: SpamFilter = self.__get_antispam_filter_chain(config)
+        state = self.__get_state()
+        antispam_filters: SpamFilter = self.__get_antispam_filter_chain(state)
 
-        configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(config)
-        manual_commands_handler: ManualModerationCommandsHandler = ManualModerationCommandsHandler(config)
+        configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(state)
+        manual_commands_handler: ManualModerationCommandsHandler = ManualModerationCommandsHandler(state)
 
         self.__add_command_handler("moderate", configuration_commands_handler.handle_add_moderable_chat)
         self.__add_command_handler("abandon", configuration_commands_handler.handle_remove_moderable_chat)
@@ -103,12 +103,12 @@ class BotBuilder:
     def __add_command_handler(self, command: str, handler):
         self.telegram_application.add_handler(CommandHandler(command, self.__with_enriched_update(handler)))
 
-    def __get_config(self) -> Config:
+    def __get_state(self) -> BotState:
         admin_provider: AdminProvider = self.__admin_provider_supplier()
-        config_path = os.path.join(self.__get_config_folder_path(), "config.json")
-        config_repo: JsonModelRepo[Config] = JsonModelRepo(config_path)
-        config: Config = Config.load_from_file(admin_provider, config_repo)
-        return config
+        state_path = os.path.join(self.__get_data_folder_path(), "state.json")
+        state_repo: JsonModelRepo[BotState] = JsonModelRepo(state_path)
+        state: BotState = BotState.load_from_file(admin_provider, state_repo)
+        return state
 
     def __get_swynca_admin_provider(self) -> AdminProvider:
         return SwyncaAdminProvider(LoggerUtil.get_logger("AdminProvider", "SwyncaAdminProvider"))
@@ -117,8 +117,8 @@ class BotBuilder:
         return ChannelAdminProvider(LoggerUtil.get_logger("AdminProvider", "ChannelAdminProvider"),
                                     self.telegram_application.bot)
 
-    def __get_antispam_filter_chain(self, config: Config) -> SpamFilter:
-        openai_config_path = os.path.join(self.__get_config_folder_path(), "openai_config.json")
+    def __get_antispam_filter_chain(self, state: BotState) -> SpamFilter:
+        openai_config_path = os.path.join(self.__get_data_folder_path(), "openai_config.json")
         openai_config: OpenAIFilterConfig = JsonModelRepo(openai_config_path).load(OpenAIFilterConfig,
                                                                                    OpenAIFilterConfig())
-        return FilterFactory.get_default_chain(config, openai_config)
+        return FilterFactory.get_default_chain(state, openai_config)

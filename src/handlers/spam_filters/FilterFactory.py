@@ -5,7 +5,7 @@ from src.handlers.spam_filters.OCRFilter import OCRFilter
 from src.handlers.spam_filters.SpamFilter import SpamFilter
 from src.handlers.spam_filters.lols.LolsSpamFilter import LolsSpamFilter
 from src.handlers.spam_filters.openai.OpenAISpamFilter import OpenAISpamFilter, OpenAIFilterConfig
-from src.util.data.Config import Config
+from src.util.data.BotState import BotState
 
 
 class FilterFactory:
@@ -23,12 +23,12 @@ class FilterFactory:
             return self.filters[0]
 
     @staticmethod
-    def get_default_chain(config: Config, openai_config: OpenAIFilterConfig) -> SpamFilter:
+    def get_default_chain(state: BotState, openai_config: OpenAIFilterConfig) -> SpamFilter:
         """Returns the default chain of spam spam_filters"""
         tesseract_path = getenv("TESSERACT_PATH", "/usr/bin/tesseract")
         tesseract_lang = getenv("TESSERACT_LANG", "rus")
-        return FilterFactory.Builder(LolsSpamFilter(config)) \
-            .then(ForwardSpamFilter(config)) \
-            .then(OCRFilter(config, tesseract_path, tesseract_lang)) \
-            .then(OpenAISpamFilter(config, openai_config)) \
+        return FilterFactory.Builder(LolsSpamFilter(state)) \
+            .then(ForwardSpamFilter(state)) \
+            .then(OCRFilter(state, tesseract_path, tesseract_lang)) \
+            .then(OpenAISpamFilter(state, openai_config)) \
             .build()

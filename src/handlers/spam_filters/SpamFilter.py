@@ -6,7 +6,7 @@ from telegram.ext import CallbackContext
 from src.TelegramHelper import TelegramHelper
 from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.util.LoggerUtil import LoggerUtil
-from src.util.data.Config import Config
+from src.util.data.BotState import BotState
 
 
 def extract_message_text(update: EnrichedUpdate) -> Optional[str]:
@@ -26,11 +26,11 @@ class SpamFilter:
         Message.left_chat_member, Message.new_chat_members
     ]
 
-    def __init__(self, config: Config, next_filter: Optional['SpamFilter'] = None):
-        self.config = config
+    def __init__(self, state: BotState, next_filter: Optional['SpamFilter'] = None):
+        self.state = state
         self.logger = LoggerUtil.get_logger(self.__logger_name, self._filter_name)
         self.next_filter = next_filter
-        self.telegram_helper = TelegramHelper(self.logger, config)
+        self.telegram_helper = TelegramHelper(self.logger, state)
 
     async def _is_spam(self, update: EnrichedUpdate, context: CallbackContext) -> bool:
         """Checks if message is spam. Returns True if message is spam, otherwise False."""
@@ -53,11 +53,11 @@ class SpamFilter:
         conditions = [
             (self.__is_message_type_not_supported(update.message),
              f"Message {update.message.id} type is blacklisted, skipping spam check"),
-            (self.config.is_user_trusted(update.message.from_user.id),
+            (self.state.is_user_trusted(update.message.from_user.id),
              f"User {update.message.from_user.id} is trusted, skipping spam check"),
-            (not self.config.is_chat_moderated(update.message.chat_id),
+            (not self.state.is_chat_moderated(update.message.chat_id),
              f"Chat {update.message.chat_id} is not moderated, skipping spam check"),
-            (await self.config.is_admin(update.effective_user.id, update.effective_chat.id),
+            (await self.state.is_admin(update.effective_user.id, update.effective_chat.id),
              f"User {update.message.from_user.id} is admin, skipping spam check"),
         ]
 
@@ -78,7 +78,7 @@ class SpamFilter:
     async def __on_filter_pass(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Executed when the message passes all filters successfully."""
         self.logger.debug(f"Message from user {update.message.from_user.id} passed all filters, trusting user..")
-        self.config.trust(update.message.from_user.id)
+        self.state.trust(update.message.from_user.id)
 
     from typing import final
 

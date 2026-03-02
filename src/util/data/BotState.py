@@ -17,20 +17,20 @@ def get_community_id(community_id: int) -> int:
     return community_id
 
 
-class Config(BaseModel):
+class BotState(BaseModel):
     trusted_user_ids: list[int] = []
     banned_channel_ids: list[int] = []
     moderated_chat_ids: list[int] = []
     audit_log_chat_id: Optional[int] = None
-    __config_repo: ModelRepo = None
+    __state_repo: ModelRepo = None
     __admin_provider: AdminProvider = None
 
     @classmethod
-    def load_from_file(cls, admin_provider: AdminProvider, config_repo: ModelRepo['Config']) -> 'Config':
-        config = config_repo.load(Config, Config())
-        config.__admin_provider = admin_provider
-        config.__config_repo = config_repo
-        return config
+    def load_from_file(cls, admin_provider: AdminProvider, state_repo: ModelRepo['BotState']) -> 'BotState':
+        state = state_repo.load(BotState, BotState())
+        state.__admin_provider = admin_provider
+        state.__state_repo = state_repo
+        return state
 
     def is_chat_moderated(self, chat_id: int) -> bool:
         """
@@ -46,7 +46,7 @@ class Config(BaseModel):
         :param chat_id: Chat id.
         """
         self.moderated_chat_ids.append(chat_id)
-        self.__config_repo.save(self)
+        self.__state_repo.save(self)
 
     def stop_chat_moderating(self, chat_id: int):
         """
@@ -54,7 +54,7 @@ class Config(BaseModel):
         :param chat_id: Chat id.
         """
         self.moderated_chat_ids.remove(chat_id)
-        self.__config_repo.save(self)
+        self.__state_repo.save(self)
 
     def set_audit_log_chat(self, chat_id: int):
         """
@@ -62,14 +62,14 @@ class Config(BaseModel):
         :param chat_id: Chat id.
         """
         self.audit_log_chat_id = chat_id
-        self.__config_repo.save(self)
+        self.__state_repo.save(self)
 
     def remove_audit_log_chat(self):
         """
         Remove audit log chat.
         """
         self.audit_log_chat_id = None
-        self.__config_repo.save(self)
+        self.__state_repo.save(self)
 
     def is_channel_banned(self, community_id: int) -> bool:
         """
@@ -82,7 +82,7 @@ class Config(BaseModel):
         Ban community.
         """
         self.banned_channel_ids.append(get_community_id(community_id))
-        self.__config_repo.save(self)
+        self.__state_repo.save(self)
 
     def get_audit_log_chat_id(self) -> Optional[int]:
         """
@@ -97,7 +97,7 @@ class Config(BaseModel):
         :param user_id: User id.
         """
         self.trusted_user_ids.append(user_id)
-        self.__config_repo.save(self)
+        self.__state_repo.save(self)
 
     def distrust(self, user_id: int):
         """
@@ -105,7 +105,7 @@ class Config(BaseModel):
         :param user_id: User id.
         """
         self.trusted_user_ids.remove(user_id)
-        self.__config_repo.save(self)
+        self.__state_repo.save(self)
 
     def is_user_trusted(self, user_id: int) -> bool:
         """

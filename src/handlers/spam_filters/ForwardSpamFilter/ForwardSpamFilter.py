@@ -7,7 +7,7 @@ from telegram import Update, MessageOriginChannel, MessageOrigin, MessageOriginC
 from telegram.ext import CallbackContext
 
 from src.handlers.spam_filters.HTTPJsonSpamFilter import HTTPJsonSpamFilter
-from src.util.data.Config import Config
+from src.util.data.BotState import BotState
 
 
 def get_channel_id(origin: MessageOrigin) -> Optional[int]:
@@ -28,14 +28,14 @@ def get_forward_channel_id(update: Update) -> Optional[int]:
 
 class ForwardSpamFilter(HTTPJsonSpamFilter):
 
-    def __init__(self, config: Config):
-        super().__init__(config)
+    def __init__(self, state: BotState):
+        super().__init__(state)
 
     async def _is_spam(self, update: Update, context: CallbackContext) -> bool:
         """Checks if message is spam. Returns true if message is spam"""
         channel_id = get_forward_channel_id(update)
         if channel_id:
-            is_banned = self.config.is_channel_banned(channel_id)
+            is_banned = self.state.is_channel_banned(channel_id)
             if is_banned:
                 self.logger.info(f"Message from banned channel {channel_id} detected")
                 return True

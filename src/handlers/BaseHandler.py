@@ -5,7 +5,7 @@ from telegram.ext import CallbackContext
 
 from src.TelegramHelper import TelegramHelper
 from src.util.LoggerUtil import LoggerUtil
-from src.util.data.Config import Config
+from src.util.data.BotState import BotState
 
 
 def admin_command(func):
@@ -17,7 +17,7 @@ def admin_command(func):
     async def wrapper(self, update: Update, context: CallbackContext, *args, **kwargs):
         user: User = update.effective_user
         chat: Chat = update.effective_chat
-        if not await self.config.is_admin(user.id, chat.id):
+        if not await self.state.is_admin(user.id, chat.id):
             self.logger.info(f"Unauthorized access attempt by user {user.id}")
             return
         return await func(self, update, context, *args, **kwargs)
@@ -50,7 +50,7 @@ def get_int_argument_value(update: Update, index: int) -> int | None:
 class BaseHandler:
     __logger_name = "GenericHandler"
 
-    def __init__(self, config: Config):
-        self.config = config
+    def __init__(self, state: BotState):
+        self.state = state
         self.logger = LoggerUtil.get_logger("EventHandler", self.__logger_name)
-        self.telegram_helper = TelegramHelper(self.logger, config)
+        self.telegram_helper = TelegramHelper(self.logger, state)
