@@ -8,8 +8,9 @@ from pydantic import BaseModel
 from telegram import ChatPermissions
 from telegram.ext import CallbackContext
 
-from src.handlers.spam_filters.SpamFilter import SpamFilter, extract_message_text
+from src.handlers.spam_filters.SpamFilter import SpamFilter
 from src.telegram.EnrichedUpdate import EnrichedUpdate
+from src.TelegramHelper import TelegramHelper
 from src.util.data.BotState import BotState
 
 default_prompt = """
@@ -53,7 +54,10 @@ class OpenAIFilterConfig(BaseModel):
 
 
 def prepare_message_for_ai(update: EnrichedUpdate) -> str:
-    message_text = extract_message_text(update) or "<Message is not text>"
+    if update.message is None:
+        message_text = "<Message is not text>"
+    else:
+        message_text = TelegramHelper.extract_message_text(update.message) or "<Message is not text>"
     if len(update.recognized_photos) != 0:
         message_text += "\n\n###\n Recognized content:\n"
     for photo_recognition in update.recognized_photos:

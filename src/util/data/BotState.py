@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from src.util.admin.AdminProvider import AdminProvider
+from src.util.data.BotEvent import BotEvent
 from src.util.data.ModelRepo import ModelRepo
 
 
@@ -16,11 +17,11 @@ def get_community_id(community_id: int) -> int:
         community_id = int(f"-100{community_id}")
     return community_id
 
-
 class BotState(BaseModel):
     trusted_user_ids: list[int] = []
     banned_channel_ids: list[int] = []
     moderated_chat_ids: list[int] = []
+    event_subscriber_id: dict[BotEvent, list[int]] = {}
     audit_log_chat_id: Optional[int] = None
     __state_repo: ModelRepo = None
     __admin_provider: AdminProvider = None
@@ -113,6 +114,47 @@ class BotState(BaseModel):
         :param user_id: User id.
         """
         return user_id in self.trusted_user_ids
+
+    def subscribe_event(self, event: BotEvent, user_id: int) -> bool:
+        """
+        Subscribe user to bot event.
+        :param event: Bot event.
+        :param user_id: User id.
+        :return: True if user was subscribed by this command, False otherwise.
+        """
+        if event not in self.event_subscriber_id:
+            self.event_subscriber_id[event] = []
+
+        if user_id not in self.event_subscriber_id[event]:
+            self.event_subscriber_id[event].append(user_id)
+            self.__state_repo.save(self)
+            return True
+        return False
+
+
+    def unsubscribe_event(self, event: BotEvent, user_id: int) -> bool:
+        """
+        Unsubscribe user from bot event.
+        :param event: Bot event.
+        :param user_id: User id.
+        :return: True if user was unsubscribed by this command, False otherwise.
+        """
+        if event not in self.event_subscriber_id:
+            return False
+
+        if user_id in self.event_subscriber_id[event]:
+            self.event_subscriber_id[event].remove(user_id)
+            self.__state_repo.save(self)
+            return True
+        return False
+
+    def get_event_subscribers(self, event: BotEvent) -> list[int]:
+        """
+        Get users subscribed to event.
+        :param event: Bot event.
+        :return: List of user ids.
+        """
+        return self.event_subscriber_id.get(event, [])
 
     async def is_admin(self, user_id: int, chat_id: int) -> bool:
         """
