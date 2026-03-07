@@ -2,13 +2,16 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import inspect
 
-from telegram import Update, Message, User
+from telegram import Update, Message, User, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.error import TelegramError
 from telegram.ext import CallbackContext
 
 from src.handlers.BaseHandler import BaseHandler, get_argument_value, admin_command
+from src.handlers.ButtonClickHandler import button_click
 from src.telegram.EnrichedUpdate import EnrichedUpdate
+from src.telegram.KeyboardData import KeyboardData, parse_keyboard_data
 from src.util.data.BotEvent import BotEvent
 
 REPORT_SUBSCRIBE_ACTION = "subscribe"
@@ -25,6 +28,16 @@ class Report:
     reporter: User
     reported_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     notified_admins: dict[int, int] = field(default_factory=dict)
+
+class ReportActionKeyboardData(KeyboardData):
+    reported_message_chat_id: int
+    reported_message_id: int
+
+class ReportIgnoreKeyboardData(ReportActionKeyboardData):
+    key_id: str = "REPORT_IGNORE"
+
+class ReportBanKeyboardData(ReportActionKeyboardData):
+    key_id: str = "REPORT_BAN"
 
 
 
@@ -49,6 +62,8 @@ class ReportCommandsHandler(BaseHandler):
             return
 
         await action_handler(update, context)
+
+
 
     @admin_command
     async def handle_subscribe_reports(self, update: EnrichedUpdate, context: CallbackContext) -> None:
@@ -139,6 +154,10 @@ class ReportCommandsHandler(BaseHandler):
         )
         await self.telegram_helper.delete_message_with_delay(context, report_status_message)
 
+    @button_click
+    def on_report_ban_button_click(self, button_data: ReportBanKeyboardData, update: EnrichedUpdate, context: CallbackContext):
+        print("Ban chuchelo")
+
 
     def _get_report_by_reported_message(self, message: Message) -> Optional[Report]:
         if message.chat_id not in self.chat_report_list:
@@ -157,11 +176,31 @@ class ReportCommandsHandler(BaseHandler):
             if reported_message_text is None:
                 reported_message_text = update.locale.report_non_text_message_placeholder
 
+            report_ban_keyboard_data = ReportBanKeyboardData(
+                reported_message_chat_id=report.reported_message.chat_id,
+                reported_message_id=report.reported_message.message_id
+            )
+            report_ignore_keyboard_data = ReportIgnoreKeyboardData(
+                reported_message_chat_id=report.reported_message.chat_id,
+                reported_message_id=report.reported_message.message_id
+            )
+
             notification_message = await self.telegram_helper.send_message(
                 context, report_subscriber_id, update.locale.report_notification_message.format(
                 reporter_tag=self.telegram_helper.get_user_tag_md(report.reporter),
                 reported_message_link=self.telegram_helper.build_message_link(report.reported_message),
-                reported_message_text=reported_message_text))
+                reported_message_text=reported_message_text),
+                reply_markup=InlineKeyboardMarkup(
+                    [
+                        [
+                            InlineKeyboardButton(text=update.locale.report_ban_button,
+                                                 callback_data=report_ban_keyboard_data.model_dump()),
+                            InlineKeyboardButton(text=update.locale.report_ignore_button,
+                                                 callback_data=report_ignore_keyboard_data.model_dump()),
+                        ],
+                    ]
+                )
+            )
             return notification_message.message_id
         except TelegramError as e:
             print(e)

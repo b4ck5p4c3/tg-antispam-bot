@@ -30,6 +30,8 @@
   "report_rate_limit_hour": "You can send up to {limit} reports per hour.",
   "report_reporting_now": "Reporting...",
   "report_reported": "Reported to {admins_count} admins.",
+  "report_ban_button": "Ban",
+  "report_ignore_button": "Ignore",
   "report_notification_message": "{reporter_tag} reported [message]({reported_message_link})\n\n`{reported_message_text}`",
   "report_non_text_message_placeholder": "[non-text message]"
 }

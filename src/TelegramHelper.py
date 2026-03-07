@@ -118,7 +118,9 @@ class TelegramHelper:
             chat_id = chat_id[4:]
         return f"https://t.me/c/{chat_id}/{message.message_id}"
 
-    def __get_audit_log_message(self, message: str):
+
+    @staticmethod
+    def __get_audit_log_message(message: str):
         return f"[#auditlog] {message}"
 
     async def __execute_telegram_api_request(self, func, *args, **kwargs):

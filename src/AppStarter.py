@@ -6,6 +6,7 @@ from asgiref.wsgi import WsgiToAsgi
 from flask import Flask, Response, request
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ApplicationBuilder, CallbackQueryHandler
 
+from src.handlers.ButtonClickHandler import ButtonClickHandler
 from src.handlers.ConfigurationCommandsHandler import ConfigurationCommandsHandler
 from src.handlers.ManualModerationCommandsHandler import ManualModerationCommandsHandler
 from src.handlers.ReportCommandsHandler import ReportCommandsHandler
@@ -92,6 +93,8 @@ class BotBuilder:
         configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(state)
         manual_commands_handler: ManualModerationCommandsHandler = ManualModerationCommandsHandler(state)
         report_commands_handler: ReportCommandsHandler = ReportCommandsHandler(state)
+        button_click_handler: ButtonClickHandler = ButtonClickHandler(state)
+        button_click_handler.set_listeners(report_commands_handler)
 
         self.__add_command_handler("moderate", configuration_commands_handler.handle_add_moderable_chat)
         self.__add_command_handler("abandon", configuration_commands_handler.handle_remove_moderable_chat)
@@ -100,6 +103,8 @@ class BotBuilder:
         self.__add_command_handler("ban", manual_commands_handler.handle_ban_user)
         self.__add_command_handler("banc", manual_commands_handler.handle_ban_community)
         self.__add_command_handler("report", report_commands_handler.handle_report_command)
+        self.telegram_application.add_handler(
+            CallbackQueryHandler(self.__with_enriched_update(button_click_handler.handle_button_click_and_route)))
         self.telegram_application.add_handler(
             MessageHandler(filters.ALL, self.__with_enriched_update(antispam_filters.apply)))
 

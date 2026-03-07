@@ -33,5 +33,7 @@ class Locale(BaseModel):
     report_rate_limit_hour: str
     report_reporting_now: str
     report_reported: str
+    report_ban_button: str
+    report_ignore_button: str
     report_notification_message: str
     report_non_text_message_placeholder: str
