@@ -33,7 +33,7 @@
   "report_reported": "Reported to {admins_count} admins.",
   "report_ban_button": "Ban",
   "report_ignore_button": "Ignore",
-  "report_notification_message": "{reporter_tag} reported [message]({reported_message_link})\n\n`{reported_message_text}`",
+  "report_notification_message": "{reporter_hyperlink} reported [message]({reported_message_link})\n\n`{reported_message_text}`",
   "report_non_text_message_placeholder": "[non-text message]",
   "report_notification_message_user_banned": "Banned :)",
   "report_notification_message_user_ignored": "Ignored :("

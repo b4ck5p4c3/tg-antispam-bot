@@ -20,8 +20,8 @@ def get_community_id(community_id: int) -> int:
 
 class CachedUser(BaseModel):
     id: int
+    first_name: str
     username: Optional[str] = None
-    first_name: Optional[str] = None
     last_name: Optional[str] = None
 
 

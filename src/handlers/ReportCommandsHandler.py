@@ -66,7 +66,7 @@ class ReportCommandsHandler(BaseHandler):
 
         action_handlers: dict[ReportCommandAction, Callable[[EnrichedUpdate, CallbackContext], Awaitable[None]]] = {
             ReportCommandAction.SUBSCRIBE: self.handle_subscribe_reports,
-            ReportCommandAction.UNSUBSCRIBE: self.handle_unsubscribe_reports
+            ReportCommandAction.UNSUBSCRIBE: self.handle_unsubscribe_reports,
         }
         selected_action_handler = None
         for action_handler_command, action_handler in action_handlers.items():
@@ -278,7 +278,7 @@ class ReportCommandsHandler(BaseHandler):
         if reported_message_text is None:
             reported_message_text = update.locale.report_non_text_message_placeholder
         notification_message_text =  update.locale.report_notification_message.format(
-            reporter_tag=self.telegram_helper.get_user_tag_md(report.reporter),
+            reporter_hyperlink=self.telegram_helper.get_user_hyperlink(report.reporter),
             reported_message_link=self.telegram_helper.build_message_link(report.reported_message),
             reported_message_text=reported_message_text)
         if report.status == ReportStatus.BANNED:

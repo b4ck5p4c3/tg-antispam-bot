@@ -55,8 +55,8 @@ class CacheHandler(BaseHandler):
         for user in users_by_id.values():
             cached_user = CachedUser(
                 id=user.id,
-                username=user.username,
                 first_name=user.first_name,
+                username=user.username,
                 last_name=user.last_name
             )
             if self.state.get_cached_user(user.id) != cached_user:

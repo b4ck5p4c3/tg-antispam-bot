@@ -112,11 +112,13 @@ class TelegramHelper:
             return
         await self.send_message(context, chat_id=audit_log_chat_id, text=self.__get_audit_log_message(message))
 
-    @staticmethod
-    def get_user_tag_md(user: User) -> str:
-        if user.username is not None:
-            return f"@{user.username}"
-        return f"[{user.first_name}](tg://user?id={user.id})"
+
+    def get_user_hyperlink(self, user_id: int):
+        cached_user = self.state.get_cached_user(user_id)
+        if cached_user is None:
+            return f"[Undefined](tg://user?id={user_id})"
+        return f"[{cached_user.first_name}](tg://user?id={cached_user.id})"
+
 
     @staticmethod
     def extract_message_text(message: Message) -> Optional[str]:
