@@ -4,7 +4,7 @@ from http import HTTPStatus
 import uvicorn
 from asgiref.wsgi import WsgiToAsgi
 from flask import Flask, Response, request
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ApplicationBuilder, CallbackQueryHandler, TypeHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ApplicationBuilder, CallbackQueryHandler, TypeHandler, ChatMemberHandler
 
 from src.handlers.ButtonClickHandler import ButtonClickHandler
 from src.handlers.CacheHandler import CacheHandler
@@ -108,6 +108,13 @@ class BotBuilder:
         self.telegram_application.add_handler(
             TypeHandler(Update, self.__with_enriched_update(cache_handler.handle_update)),
             group=-1
+        )
+        self.telegram_application.add_handler(
+            ChatMemberHandler(
+                self.__with_enriched_update(report_commands_handler.handle_banned_user_updates),
+                chat_member_types=ChatMemberHandler.CHAT_MEMBER
+            ),
+            group=0
         )
         self.telegram_application.add_handler(
             CallbackQueryHandler(self.__with_enriched_update(button_click_handler.handle_button_click_and_route)))

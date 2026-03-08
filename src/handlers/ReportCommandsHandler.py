@@ -6,6 +6,7 @@ from typing import Optional
 import inspect
 
 from telegram import Update, Message, User, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
+from telegram.constants import ChatMemberStatus
 from telegram.error import TelegramError
 from telegram.ext import CallbackContext
 
@@ -40,7 +41,6 @@ class Report:
     reported_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     notified_admins: dict[int, NotificationMessage] = field(default_factory=dict)
     status: ReportStatus = ReportStatus.PENDING
-    status_updated_by: User = None
 
 class ReportActionKeyboardData(KeyboardData):
     reported_message_chat_id: int
@@ -194,6 +194,22 @@ class ReportCommandsHandler(BaseHandler):
         )
         await self.telegram_helper.delete_message_with_delay(context, report_status_message)
 
+    async def handle_banned_user_updates(self, update: EnrichedUpdate, context: CallbackContext) -> None:
+        if update.chat_member is None:
+            return
+        if update.chat_member.new_chat_member.status != ChatMemberStatus.BANNED:
+            return
+
+        banned_user = update.chat_member.new_chat_member.user
+        chat_id = update.chat_member.chat.id
+        for report in self._get_report_list(chat_id):
+            if report.status != ReportStatus.PENDING:
+                continue
+            reported_user = report.reported_message.from_user
+            if reported_user is None or reported_user.id != banned_user.id:
+                continue
+            report.status = ReportStatus.BANNED
+            await self._update_notification_message_by_report(report, update, context)
 
     async def _get_report_subscribers(self, chat_id: int) -> list[int]:
         spam_report_subscribers = self.state.get_event_subscribers(BotEvent.REPORT)
@@ -243,8 +259,9 @@ class ReportCommandsHandler(BaseHandler):
 
 
     async def _update_notification_message_by_report(self, report: Report, update: EnrichedUpdate, context: CallbackContext):
+        effective_user_id = update.effective_user.id if update.effective_user is not None else None
         for notification_message in report.notified_admins.values():
-            if notification_message.chat_id==update.effective_user.id:
+            if effective_user_id is None or notification_message.chat_id == effective_user_id:
                 new_notification_message_text = self._get_notification_message_text(report, update)
                 await context.bot.edit_message_text(chat_id=notification_message.chat_id,
                                                     message_id=notification_message.message_id,
@@ -301,7 +318,7 @@ class ReportCommandsHandler(BaseHandler):
         if reported_message_text is None:
             reported_message_text = update.locale.report_non_text_message_placeholder
         notification_message_text =  update.locale.report_notification_message.format(
-            reporter_hyperlink=self.telegram_helper.get_user_hyperlink(report.reporter),
+            reporter_hyperlink=self.telegram_helper.get_user_hyperlink(report.reporter.id),
             reported_message_link=self.telegram_helper.build_message_link(report.reported_message),
             reported_message_text=reported_message_text)
         if report.status == ReportStatus.BANNED:
