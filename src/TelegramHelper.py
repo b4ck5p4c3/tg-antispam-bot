@@ -5,8 +5,10 @@ from typing import Optional
 from requests import JSONDecodeError
 from telegram.ext import CallbackContext
 
+from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.util.data.BotState import BotState
 from telegram import Message, ChatPermissions, File, Chat, User
+
 
 
 class TelegramHelper:
@@ -32,10 +34,25 @@ class TelegramHelper:
         user_id = message.from_user.id
         chat_id = message.chat_id
         self.logger.warning(f"Banning user {user_id}")
-        await self.__execute_telegram_api_request(context.bot.ban_chat_member, chat_id=chat_id, user_id=user_id)
+        await self.ban_chat_member(context, chat_id=chat_id, user_id=user_id)
+
+    async def try_ban_and_delete_message(self, context: CallbackContext, message: Message) -> None:
+        await self.try_remove_message(context, message)
+
+        await self.ban_message_author(context, message)
+
+    async def audit_log_ban_for_message(self, message: Message, update: EnrichedUpdate, context: CallbackContext, message_quote_max_len: int = 200) -> None:
+        truncated_message = message.text[:message_quote_max_len]
+
+        await self.audit_log(context, update.message, update.locale.audit_log_user_banned_by_reply
+                                             .format(banned_user=message.from_user,
+                                                     banned_by=update.effective_user,
+                                                     message=truncated_message, chat=message.chat))
+
 
     async def ban_chat_member(self, context: CallbackContext, chat_id: int, user_id: int) -> None:
         await self.__execute_telegram_api_request(context.bot.ban_chat_member, chat_id=chat_id, user_id=user_id)
+        self.state.untrust(user_id)
 
     async def add_message_reaction(self, context: CallbackContext, message: Message, reaction: str) -> None:
         await self.__execute_telegram_api_request(context.bot.set_message_reaction, chat_id=message.chat_id,

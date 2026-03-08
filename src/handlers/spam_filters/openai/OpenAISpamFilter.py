@@ -100,7 +100,6 @@ class OpenAISpamFilter(SpamFilter):
         if not self.openai_client:
             return False
         """Checks if message is spam. Returns true if message is spam"""
-        print(update.recognized_photos)
         response = self._openai_check_message(prepare_message_for_ai(update))
         answer_text = response.choices[0].message.content
         spamness_percent = self._find_spamness_percent(answer_text)

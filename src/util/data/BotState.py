@@ -94,10 +94,20 @@ class BotState(BaseModel):
 
     def trust(self, user_id: int):
         """
-        Add user to trusted users list (trusted users are not checked for spam).
+        Add user to trusted users list (trusted users are not being checked for spam).
         :param user_id: User id.
         """
         self.trusted_user_ids.append(user_id)
+        self.__state_repo.save(self)
+
+
+    def untrust(self, user_id: int):
+        """
+        Remove user from trusted users list. -rice
+        :param user_id: User id.
+        """
+        if user_id in self.trusted_user_ids:
+            self.trusted_user_ids.remove(user_id)
         self.__state_repo.save(self)
 
     def distrust(self, user_id: int):
@@ -154,7 +164,7 @@ class BotState(BaseModel):
         :param event: Bot event.
         :return: List of user ids.
         """
-        return self.event_subscriber_id.get(event, [])
+        return list(self.event_subscriber_id.get(event, []))
 
     async def is_admin(self, user_id: int, chat_id: int) -> bool:
         """

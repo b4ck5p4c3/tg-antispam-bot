@@ -80,7 +80,7 @@ class ButtonClickHandler(BaseHandler):
             return
         button_click_handler_funcs = self._type_listeners[keyboard_data_type]
         for button_click_handler_func in button_click_handler_funcs:
-            button_click_handler_func(update, context, keyboard_data)
+            await button_click_handler_func(keyboard_data, update, context)
 
 
         

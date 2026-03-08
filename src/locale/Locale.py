@@ -37,3 +37,5 @@ class Locale(BaseModel):
     report_ignore_button: str
     report_notification_message: str
     report_non_text_message_placeholder: str
+    report_notification_message_user_banned: str
+    report_notification_message_user_ignored: str
