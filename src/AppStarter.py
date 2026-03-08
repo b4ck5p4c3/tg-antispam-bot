@@ -4,9 +4,10 @@ from http import HTTPStatus
 import uvicorn
 from asgiref.wsgi import WsgiToAsgi
 from flask import Flask, Response, request
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ApplicationBuilder, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ApplicationBuilder, CallbackQueryHandler, TypeHandler
 
 from src.handlers.ButtonClickHandler import ButtonClickHandler
+from src.handlers.CacheHandler import CacheHandler
 from src.handlers.ConfigurationCommandsHandler import ConfigurationCommandsHandler
 from src.handlers.ManualModerationCommandsHandler import ManualModerationCommandsHandler
 from src.handlers.ReportCommandsHandler import ReportCommandsHandler
@@ -93,6 +94,7 @@ class BotBuilder:
         configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(state)
         manual_commands_handler: ManualModerationCommandsHandler = ManualModerationCommandsHandler(state)
         report_commands_handler: ReportCommandsHandler = ReportCommandsHandler(state)
+        cache_handler: CacheHandler = CacheHandler(state)
         button_click_handler: ButtonClickHandler = ButtonClickHandler(state)
         button_click_handler.set_listeners(report_commands_handler)
 
@@ -103,6 +105,10 @@ class BotBuilder:
         self.__add_command_handler("ban", manual_commands_handler.handle_ban_user)
         self.__add_command_handler("banc", manual_commands_handler.handle_ban_community)
         self.__add_command_handler("report", report_commands_handler.handle_report_command)
+        self.telegram_application.add_handler(
+            TypeHandler(Update, self.__with_enriched_update(cache_handler.handle_update)),
+            group=-1
+        )
         self.telegram_application.add_handler(
             CallbackQueryHandler(self.__with_enriched_update(button_click_handler.handle_button_click_and_route)))
         self.telegram_application.add_handler(

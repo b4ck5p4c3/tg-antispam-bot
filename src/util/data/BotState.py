@@ -17,12 +17,28 @@ def get_community_id(community_id: int) -> int:
         community_id = int(f"-100{community_id}")
     return community_id
 
+
+class CachedUser(BaseModel):
+    id: int
+    username: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+
+class CachedChannel(BaseModel):
+    id: int
+
+
+
+
 class BotState(BaseModel):
     trusted_user_ids: list[int] = []
     banned_channel_ids: list[int] = []
     moderated_chat_ids: list[int] = []
     event_subscriber_id: dict[BotEvent, list[int]] = {}
     audit_log_chat_id: Optional[int] = None
+    user_cache: dict[int, CachedUser] = {}
+    channel_cache: dict[int, CachedChannel] = {}
     __state_repo: ModelRepo = None
     __admin_provider: AdminProvider = None
 
@@ -91,6 +107,38 @@ class BotState(BaseModel):
         :return: Audit log chat id.
         """
         return self.audit_log_chat_id
+
+    def get_cached_user(self, user_id: int) -> Optional[CachedUser]:
+        """
+        Get cached user by id.
+        :param user_id: User id.
+        :return: Cached user or None.
+        """
+        return self.user_cache.get(user_id)
+
+    def set_cached_user(self, user: CachedUser) -> None:
+        """
+        Save single cached user.
+        :param user: Cached user.
+        """
+        self.user_cache[user.id] = user
+        self.__state_repo.save(self)
+
+    def get_cached_channel(self, channel_id: int) -> Optional[CachedChannel]:
+        """
+        Get cached channel by id.
+        :param channel_id: Channel id.
+        :return: Cached channel or None.
+        """
+        return self.channel_cache.get(channel_id)
+
+    def set_cached_channel(self, channel: CachedChannel) -> None:
+        """
+        Save single cached channel.
+        :param channel: Cached channel.
+        """
+        self.channel_cache[channel.id] = channel
+        self.__state_repo.save(self)
 
     def trust(self, user_id: int):
         """
