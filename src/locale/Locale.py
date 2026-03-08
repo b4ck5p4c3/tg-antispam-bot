@@ -39,3 +39,5 @@ class Locale(BaseModel):
     report_non_text_message_placeholder: str
     report_notification_message_user_banned: str
     report_notification_message_user_ignored: str
+    report_list_empty: str
+    report_list_subscribers: str

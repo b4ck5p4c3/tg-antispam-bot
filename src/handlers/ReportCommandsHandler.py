@@ -67,6 +67,7 @@ class ReportCommandsHandler(BaseHandler):
         action_handlers: dict[ReportCommandAction, Callable[[EnrichedUpdate, CallbackContext], Awaitable[None]]] = {
             ReportCommandAction.SUBSCRIBE: self.handle_subscribe_reports,
             ReportCommandAction.UNSUBSCRIBE: self.handle_unsubscribe_reports,
+            ReportCommandAction.LIST: self.handle_list_report_subscribers,
         }
         selected_action_handler = None
         for action_handler_command, action_handler in action_handlers.items():
@@ -107,6 +108,28 @@ class ReportCommandsHandler(BaseHandler):
             context, update.message, update.locale.report_unsubscribed
         )
         self.logger.info(f"User {user_id} unsubscribed from report events")
+
+
+    async def handle_list_report_subscribers(self, update: EnrichedUpdate, context: CallbackContext) -> None:
+        subscribers = await self._get_report_subscribers(update.effective_chat.id)
+        if len(subscribers) == 0:
+            await self.telegram_helper.send_message(
+                context,
+                chat_id=update.effective_chat.id,
+                text=update.locale.report_list_empty,
+                reply_to_message_id=update.message.id,
+            )
+            return
+
+        subscribers_hyperlinks = [self.telegram_helper.get_user_hyperlink(user_id) for user_id in subscribers]
+        subscribers_list_md = "\n".join(f"{index}. {user_hyperlink}"
+                                        for index, user_hyperlink in enumerate(subscribers_hyperlinks, start=1))
+        await self.telegram_helper.send_message(
+            context,
+            chat_id=update.effective_chat.id,
+            text=update.locale.report_list_subscribers.format(subscribers=subscribers_list_md),
+            reply_to_message_id=update.message.id,
+        )
 
     async def handle_spam_report(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         if update.message.reply_to_message is None:

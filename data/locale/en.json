@@ -21,7 +21,7 @@
   "audit_log_community_banned_by_id": "Community {community_id} has been banned by [{banned_by.first_name}](tg://user?id={banned_by.id}) ({banned_by.id}) in chat **{chat.title}**",
   "audit_log_community_not_found": "Community ban failed: No community ID provided by [{banned_by.first_name}](tg://user?id={banned_by.id}) ({banned_by.id}) in chat **{chat.title}**",
   "community_already_banned": "Community {community_id} is already banned",
-  "report_usage": "Usage: `/report` (spam report stub), `/report subscribe`, or `/report unsubscribe`",
+  "report_usage": "Report commands:\n`/report` - Report a message as spam (use in reply to that message)\n`/report subscribe` - [Admin] Subscribe to report notifications\n`/report unsubscribe` - [Admin] Unsubscribe from report notifications\n`/report list` - Show subscribed admins",
   "report_subscribed": "You are subscribed to report events",
   "report_unsubscribed": "You are unsubscribed from report events",
   "report_already_subscribed": "You are already subscribed to report events",
@@ -36,5 +36,7 @@
   "report_notification_message": "{reporter_hyperlink} reported [message]({reported_message_link})\n\n`{reported_message_text}`",
   "report_non_text_message_placeholder": "[non-text message]",
   "report_notification_message_user_banned": "Banned :)",
-  "report_notification_message_user_ignored": "Ignored :("
+  "report_notification_message_user_ignored": "Ignored :(",
+  "report_list_empty": "No admins are subscribed to report events :/",
+  "report_list_subscribers": "Here are my mini-piglins \uD83D\uDC95:\n\n{subscribers}"
 }
