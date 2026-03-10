@@ -3,7 +3,7 @@ from threading import Timer
 from typing import Dict
 from venv import logger
 
-from telegram import Update
+from telegram import MessageOriginChat, Update
 from telegram.ext import CallbackContext
 
 from src.handlers.spam_filters.HTTPJsonSpamFilter import HTTPJsonSpamFilter
@@ -30,6 +30,13 @@ class LolsSpamFilter(HTTPJsonSpamFilter):
         """Checks if message is spam. Returns true if message is spam"""
         message_author_id = update.message.from_user.id
         return self.is_spam(message_author_id)
+
+    async def _on_spam(self, update: Update, context: CallbackContext) -> None:
+        reposted_group_id = self.__get_reposted_group_id(update)
+        if reposted_group_id is not None and not self.state.is_channel_banned(reposted_group_id):
+            self.logger.warning(f"Blocking repost source group {reposted_group_id} after Lols spam detection")
+            self.state.ban_channel(reposted_group_id)
+        await super()._on_spam(update, context)
 
     def is_spam(self, user_id: int) -> bool:
         if self.__is_in_cache(user_id):
@@ -79,3 +86,11 @@ class LolsSpamFilter(HTTPJsonSpamFilter):
             if current_time - timestamp > self.__CACHE_MAX_AGE_SEC:
                 self.logger.debug(f"Invalidating cache for {self.__CACHE_LIST_NAME} at {timestamp}")
                 del self.__CACHE_LIST_REQUESTS_BY_TIMESTAMP[timestamp]
+
+    @staticmethod
+    def __get_reposted_group_id(update: Update) -> int | None:
+        if update.message is None or update.message.forward_origin is None:
+            return None
+        if isinstance(update.message.forward_origin, MessageOriginChat):
+            return update.message.forward_origin.sender_chat.id
+        return None
