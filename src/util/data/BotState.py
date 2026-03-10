@@ -3,6 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from src.util.admin.AdminProvider import AdminProvider
+from src.util.data.BotEvent import BotEvent
 from src.util.data.ModelRepo import ModelRepo
 
 
@@ -17,11 +18,27 @@ def get_community_id(community_id: int) -> int:
     return community_id
 
 
+class CachedUser(BaseModel):
+    id: int
+    first_name: str
+    username: Optional[str] = None
+    last_name: Optional[str] = None
+
+
+class CachedChannel(BaseModel):
+    id: int
+
+
+
+
 class BotState(BaseModel):
     trusted_user_ids: list[int] = []
     banned_channel_ids: list[int] = []
     moderated_chat_ids: list[int] = []
+    event_subscriber_id: dict[BotEvent, list[int]] = {}
     audit_log_chat_id: Optional[int] = None
+    user_cache: dict[int, CachedUser] = {}
+    channel_cache: dict[int, CachedChannel] = {}
     __state_repo: ModelRepo = None
     __admin_provider: AdminProvider = None
 
@@ -91,12 +108,54 @@ class BotState(BaseModel):
         """
         return self.audit_log_chat_id
 
+    def get_cached_user(self, user_id: int) -> Optional[CachedUser]:
+        """
+        Get cached user by id.
+        :param user_id: User id.
+        :return: Cached user or None.
+        """
+        return self.user_cache.get(user_id)
+
+    def set_cached_user(self, user: CachedUser) -> None:
+        """
+        Save single cached user.
+        :param user: Cached user.
+        """
+        self.user_cache[user.id] = user
+        self.__state_repo.save(self)
+
+    def get_cached_channel(self, channel_id: int) -> Optional[CachedChannel]:
+        """
+        Get cached channel by id.
+        :param channel_id: Channel id.
+        :return: Cached channel or None.
+        """
+        return self.channel_cache.get(channel_id)
+
+    def set_cached_channel(self, channel: CachedChannel) -> None:
+        """
+        Save single cached channel.
+        :param channel: Cached channel.
+        """
+        self.channel_cache[channel.id] = channel
+        self.__state_repo.save(self)
+
     def trust(self, user_id: int):
         """
-        Add user to trusted users list (trusted users are not checked for spam).
+        Add user to trusted users list (trusted users are not being checked for spam).
         :param user_id: User id.
         """
         self.trusted_user_ids.append(user_id)
+        self.__state_repo.save(self)
+
+
+    def untrust(self, user_id: int):
+        """
+        Remove user from trusted users list. -rice
+        :param user_id: User id.
+        """
+        if user_id in self.trusted_user_ids:
+            self.trusted_user_ids.remove(user_id)
         self.__state_repo.save(self)
 
     def distrust(self, user_id: int):
@@ -113,6 +172,47 @@ class BotState(BaseModel):
         :param user_id: User id.
         """
         return user_id in self.trusted_user_ids
+
+    def subscribe_event(self, event: BotEvent, user_id: int) -> bool:
+        """
+        Subscribe user to bot event.
+        :param event: Bot event.
+        :param user_id: User id.
+        :return: True if user was subscribed by this command, False otherwise.
+        """
+        if event not in self.event_subscriber_id:
+            self.event_subscriber_id[event] = []
+
+        if user_id not in self.event_subscriber_id[event]:
+            self.event_subscriber_id[event].append(user_id)
+            self.__state_repo.save(self)
+            return True
+        return False
+
+
+    def unsubscribe_event(self, event: BotEvent, user_id: int) -> bool:
+        """
+        Unsubscribe user from bot event.
+        :param event: Bot event.
+        :param user_id: User id.
+        :return: True if user was unsubscribed by this command, False otherwise.
+        """
+        if event not in self.event_subscriber_id:
+            return False
+
+        if user_id in self.event_subscriber_id[event]:
+            self.event_subscriber_id[event].remove(user_id)
+            self.__state_repo.save(self)
+            return True
+        return False
+
+    def get_event_subscribers(self, event: BotEvent) -> list[int]:
+        """
+        Get users subscribed to event.
+        :param event: Bot event.
+        :return: List of user ids.
+        """
+        return list(self.event_subscriber_id.get(event, []))
 
     async def is_admin(self, user_id: int, chat_id: int) -> bool:
         """

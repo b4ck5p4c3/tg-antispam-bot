@@ -7,11 +7,9 @@ class Locale(BaseModel):
     chat_removed_from_moderate: str
     chat_not_moderated: str
     chat_already_moderated: str
-    user_not_admin: str
     audit_log_chat_set: str
     audit_log_chat_updated: str
     audit_log_chat_removed: str
-    audit_log_chat_not_set: str
     audit_log_chat_not_found: str
     ban_failed: str
     ban_success: str
@@ -25,3 +23,21 @@ class Locale(BaseModel):
     community_already_banned: str
     audit_log_community_banned_by_id: str
     audit_log_community_not_found: str
+    report_usage: str
+    report_subscribed: str
+    report_unsubscribed: str
+    report_already_subscribed: str
+    report_not_subscribed: str
+    report_reply_required: str
+    report_already_exists: str
+    report_rate_limit_hour: str
+    report_reporting_now: str
+    report_reported: str
+    report_ban_button: str
+    report_ignore_button: str
+    report_notification_message: str
+    report_non_text_message_placeholder: str
+    report_notification_message_user_banned: str
+    report_notification_message_user_ignored: str
+    report_list_empty: str
+    report_list_subscribers: str

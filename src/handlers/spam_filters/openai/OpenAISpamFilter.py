@@ -8,8 +8,9 @@ from pydantic import BaseModel
 from telegram import ChatPermissions
 from telegram.ext import CallbackContext
 
-from src.handlers.spam_filters.SpamFilter import SpamFilter, extract_message_text
+from src.handlers.spam_filters.SpamFilter import SpamFilter
 from src.telegram.EnrichedUpdate import EnrichedUpdate
+from src.TelegramHelper import TelegramHelper
 from src.util.data.BotState import BotState
 
 default_prompt = """
@@ -23,6 +24,9 @@ Please analyze the message provided below for signs of spam or fraud. Pay attent
 - Promises of unrealistically favorable conditions.
 - Casino ads
 - ANY job offer
+- Crypto buying and selling offers
+- Messages that disguise promotion as "personal notes/materials" and invite users to contact privately
+  (for example: trading "step-by-step guide", "human language", "if interested, contact me").
 
 Note that messages are sent in a technical community chat, so discussions of hacks, exploits, and other specialized terms are absolutely normal. 
 Also, keep in mind that most messages will be in Russian, and this is not a sign of spam. Also in the end of the message i'll provide a attachments transcription, please use it for spam analysis.
@@ -53,7 +57,10 @@ class OpenAIFilterConfig(BaseModel):
 
 
 def prepare_message_for_ai(update: EnrichedUpdate) -> str:
-    message_text = extract_message_text(update) or "<Message is not text>"
+    if update.message is None:
+        message_text = "<Message is not text>"
+    else:
+        message_text = TelegramHelper.extract_message_text(update.message) or "<Message is not text>"
     if len(update.recognized_photos) != 0:
         message_text += "\n\n###\n Recognized content:\n"
     for photo_recognition in update.recognized_photos:
@@ -96,7 +103,6 @@ class OpenAISpamFilter(SpamFilter):
         if not self.openai_client:
             return False
         """Checks if message is spam. Returns true if message is spam"""
-        print(update.recognized_photos)
         response = self._openai_check_message(prepare_message_for_ai(update))
         answer_text = response.choices[0].message.content
         spamness_percent = self._find_spamness_percent(answer_text)

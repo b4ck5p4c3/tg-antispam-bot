@@ -5,7 +5,7 @@ from src.handlers.BaseHandler import BaseHandler, admin_command, get_argument_va
 from src.handlers.spam_filters.ForwardSpamFilter.ForwardSpamFilter import get_forward_channel_id, get_channel_id
 from src.telegram.EnrichedUpdate import EnrichedUpdate
 
-BANNED_USER_MESSAGE_MAX_LEN_AUDIT = 200
+
 
 
 def _extract_ban_user_id(update: EnrichedUpdate) -> int | None:
@@ -55,12 +55,7 @@ class ManualModerationCommandsHandler(BaseHandler):
                                                           text=update.locale.ban_success.format(user_id=ban_user_id),
                                                           remove_in_seconds=20)
         if update.message.reply_to_message is not None:
-            truncated_message = update.message.reply_to_message.text[:BANNED_USER_MESSAGE_MAX_LEN_AUDIT]
-
-            await self.telegram_helper.audit_log(context, update.message, update.locale.audit_log_user_banned_by_reply
-                                                 .format(banned_user=update.message.reply_to_message.from_user,
-                                                         banned_by=update.effective_user,
-                                                         message=truncated_message, chat=update.effective_chat))
+            await self.telegram_helper.audit_log_ban_for_message(update.message.reply_to_message, update, context)
         else:
             await self.telegram_helper.audit_log(context, update.message, update.locale.audit_log_user_banned_by_id
                                                  .format(banned_id=ban_user_id, banned_by=update.effective_user,

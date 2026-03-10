@@ -4,10 +4,13 @@ from http import HTTPStatus
 import uvicorn
 from asgiref.wsgi import WsgiToAsgi
 from flask import Flask, Response, request
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ApplicationBuilder
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ApplicationBuilder, CallbackQueryHandler, TypeHandler, ChatMemberHandler
 
+from src.handlers.ButtonClickHandler import ButtonClickHandler
+from src.handlers.CacheHandler import CacheHandler
 from src.handlers.ConfigurationCommandsHandler import ConfigurationCommandsHandler
 from src.handlers.ManualModerationCommandsHandler import ManualModerationCommandsHandler
+from src.handlers.ReportCommandsHandler import ReportCommandsHandler
 from src.handlers.spam_filters.FilterFactory import FilterFactory
 from src.handlers.spam_filters.SpamFilter import SpamFilter
 from src.handlers.spam_filters.openai.OpenAISpamFilter import OpenAIFilterConfig
@@ -90,6 +93,10 @@ class BotBuilder:
 
         configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(state)
         manual_commands_handler: ManualModerationCommandsHandler = ManualModerationCommandsHandler(state)
+        report_commands_handler: ReportCommandsHandler = ReportCommandsHandler(state)
+        cache_handler: CacheHandler = CacheHandler(state)
+        button_click_handler: ButtonClickHandler = ButtonClickHandler(state)
+        button_click_handler.set_listeners(report_commands_handler)
 
         self.__add_command_handler("moderate", configuration_commands_handler.handle_add_moderable_chat)
         self.__add_command_handler("abandon", configuration_commands_handler.handle_remove_moderable_chat)
@@ -97,6 +104,20 @@ class BotBuilder:
         self.__add_command_handler("unset_audit_log", configuration_commands_handler.unset_channel_as_audit_log)
         self.__add_command_handler("ban", manual_commands_handler.handle_ban_user)
         self.__add_command_handler("banc", manual_commands_handler.handle_ban_community)
+        self.__add_command_handler("report", report_commands_handler.handle_report_command)
+        self.telegram_application.add_handler(
+            TypeHandler(Update, self.__with_enriched_update(cache_handler.handle_update)),
+            group=-1
+        )
+        self.telegram_application.add_handler(
+            ChatMemberHandler(
+                self.__with_enriched_update(report_commands_handler.handle_banned_user_updates),
+                chat_member_types=ChatMemberHandler.CHAT_MEMBER
+            ),
+            group=0
+        )
+        self.telegram_application.add_handler(
+            CallbackQueryHandler(self.__with_enriched_update(button_click_handler.handle_button_click_and_route)))
         self.telegram_application.add_handler(
             MessageHandler(filters.ALL, self.__with_enriched_update(antispam_filters.apply)))
 

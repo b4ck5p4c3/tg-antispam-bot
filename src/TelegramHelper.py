@@ -1,11 +1,14 @@
 import asyncio
 from logging import Logger
+from typing import Optional
 
 from requests import JSONDecodeError
 from telegram.ext import CallbackContext
 
+from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.util.data.BotState import BotState
-from telegram import Message, ChatPermissions, File, Chat
+from telegram import Message, ChatPermissions, File, Chat, User
+
 
 
 class TelegramHelper:
@@ -31,10 +34,25 @@ class TelegramHelper:
         user_id = message.from_user.id
         chat_id = message.chat_id
         self.logger.warning(f"Banning user {user_id}")
-        await self.__execute_telegram_api_request(context.bot.ban_chat_member, chat_id=chat_id, user_id=user_id)
+        await self.ban_chat_member(context, chat_id=chat_id, user_id=user_id)
+
+    async def try_ban_and_delete_message(self, context: CallbackContext, message: Message) -> None:
+        await self.try_remove_message(context, message)
+
+        await self.ban_message_author(context, message)
+
+    async def audit_log_ban_for_message(self, message: Message, update: EnrichedUpdate, context: CallbackContext, message_quote_max_len: int = 200) -> None:
+        truncated_message = message.text[:message_quote_max_len]
+
+        await self.audit_log(context, update.message, update.locale.audit_log_user_banned_by_reply
+                                             .format(banned_user=message.from_user,
+                                                     banned_by=update.effective_user,
+                                                     message=truncated_message, chat=message.chat))
+
 
     async def ban_chat_member(self, context: CallbackContext, chat_id: int, user_id: int) -> None:
         await self.__execute_telegram_api_request(context.bot.ban_chat_member, chat_id=chat_id, user_id=user_id)
+        self.state.untrust(user_id)
 
     async def add_message_reaction(self, context: CallbackContext, message: Message, reaction: str) -> None:
         await self.__execute_telegram_api_request(context.bot.set_message_reaction, chat_id=message.chat_id,
@@ -49,6 +67,31 @@ class TelegramHelper:
                                      remove_in_seconds: int = 30) -> None:
         message = await self.send_message(context, chat_id=chat_id, text=text)
         await self.delete_message_with_delay(context, message, remove_in_seconds)
+
+    async def send_temporary_sticker(self, context: CallbackContext, chat_id: int, sticker: str,
+                                     remove_in_seconds: int = 30,
+                                     reply_to_message_id: Optional[int] = None) -> None:
+        try:
+            send_sticker_kwargs = {
+                "chat_id": chat_id,
+                "sticker": sticker
+            }
+            if reply_to_message_id is not None:
+                send_sticker_kwargs["reply_to_message_id"] = reply_to_message_id
+            message = await self.__execute_telegram_api_request(context.bot.send_sticker, **send_sticker_kwargs)
+        except Exception as e:
+            self.logger.warning(f"Failed to send sticker to chat {chat_id}: {e}")
+            return
+        if message is None:
+            self.logger.warning(f"Failed to send sticker to chat {chat_id}: empty Telegram API response")
+            return
+        await self.delete_message_with_delay(context, message, remove_in_seconds)
+
+    async def send_temporary_reply_and_remove_command(self, context: CallbackContext, command_message: Message,
+                                                      text: str, remove_in_seconds: int = 30) -> None:
+        await self.delete_message_with_delay(context, command_message)
+        await self.send_temporary_message(context, chat_id=command_message.chat_id, text=text,
+                                          remove_in_seconds=remove_in_seconds)
 
     async def restrict_chat_member(self, context: CallbackContext, chat_id: int, user_id: int,
                                    permissions: ChatPermissions) -> None:
@@ -69,7 +112,34 @@ class TelegramHelper:
             return
         await self.send_message(context, chat_id=audit_log_chat_id, text=self.__get_audit_log_message(message))
 
-    def __get_audit_log_message(self, message: str):
+
+    def get_user_hyperlink(self, user_id: int):
+        cached_user = self.state.get_cached_user(user_id)
+        if cached_user is None:
+            return f"[Undefined](tg://user?id={user_id})"
+        return f"[{cached_user.first_name}](tg://user?id={cached_user.id})"
+
+
+    @staticmethod
+    def extract_message_text(message: Message) -> Optional[str]:
+        if message.text is not None:
+            return message.text
+        if message.caption is not None:
+            return message.caption
+        return None
+
+    @staticmethod
+    def build_message_link(message: Message) -> str:
+        if message.chat.username is not None:
+            return f"https://t.me/{message.chat.username}/{message.message_id}"
+        chat_id = str(message.chat_id)
+        if chat_id.startswith("-100"):
+            chat_id = chat_id[4:]
+        return f"https://t.me/c/{chat_id}/{message.message_id}"
+
+
+    @staticmethod
+    def __get_audit_log_message(message: str):
         return f"[#auditlog] {message}"
 
     async def __execute_telegram_api_request(self, func, *args, **kwargs):

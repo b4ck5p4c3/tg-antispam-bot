@@ -4,19 +4,9 @@ from telegram import Message
 from telegram.ext import CallbackContext
 
 from src.TelegramHelper import TelegramHelper
-from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.util.LoggerUtil import LoggerUtil
 from src.util.data.BotState import BotState
-
-
-def extract_message_text(update: EnrichedUpdate) -> Optional[str]:
-    if update.message is None:
-        return None
-    if update.message.text is not None:
-        return update.message.text
-    elif update.message.caption is not None:
-        return update.message.caption
-    return None
+from src.telegram.EnrichedUpdate import EnrichedUpdate
 
 
 class SpamFilter:
