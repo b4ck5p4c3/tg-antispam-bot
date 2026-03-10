@@ -244,7 +244,6 @@ class ReportCommandsHandler(BaseHandler):
         report = self._get_report(button_data.reported_message_id, button_data.reported_message_chat_id)
         report.status = ReportStatus.BANNED
         await self.telegram_helper.try_ban_and_delete_message(context, report.reported_message)
-        await self.telegram_helper.audit_log_ban_for_message(report.reported_message, update, context)
         await self._update_notification_message_by_report(report, update, context)
 
 

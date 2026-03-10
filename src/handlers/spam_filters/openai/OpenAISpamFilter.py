@@ -24,6 +24,9 @@ Please analyze the message provided below for signs of spam or fraud. Pay attent
 - Promises of unrealistically favorable conditions.
 - Casino ads
 - ANY job offer
+- Crypto buying and selling offers
+- Messages that disguise promotion as "personal notes/materials" and invite users to contact privately
+  (for example: trading "step-by-step guide", "human language", "if interested, contact me").
 
 Note that messages are sent in a technical community chat, so discussions of hacks, exploits, and other specialized terms are absolutely normal. 
 Also, keep in mind that most messages will be in Russian, and this is not a sign of spam. Also in the end of the message i'll provide a attachments transcription, please use it for spam analysis.
