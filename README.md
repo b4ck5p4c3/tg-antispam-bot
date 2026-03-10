@@ -58,6 +58,13 @@ The following environment variables are used to configure the bot:
 - `TESSERACT_PATH`: Path to the tesseract executable (Optional, default: '/usr/bin/tesseract')
 - `TESSERACT_LANG`: Language code for tesseract OCR (Optional, default: 'rus')
 
+## Healthcheck endpoint
+
+- `GET /api/health`
+- Returns `200` with `{"telegram_api":"available"}` when Telegram Bot API is reachable.
+- Returns `500` with `{"telegram_api":"unavailable"}` when Telegram Bot API is unreachable.
+- Availability is checked in background every 10 seconds in both polling and webhook modes.
+
 ## Contribution
 
 For guidelines on how to contribute to this project, please see the [CONTRIBUTING.md](CONTRIBUTING.md) file.

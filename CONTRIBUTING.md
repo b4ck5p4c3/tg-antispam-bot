@@ -12,7 +12,7 @@
 
 3. **Register the Handler**:
     - Open `main.py`.
-    - Import your new handler class.
+    - Create instance of your new handler class.
     - Add it to the Telegram application using the appropriate handler method (e.g., `CommandHandler`,
       `MessageHandler`).
 

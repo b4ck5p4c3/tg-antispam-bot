@@ -16,6 +16,7 @@ from src.handlers.spam_filters.SpamFilter import SpamFilter
 from src.handlers.spam_filters.openai.OpenAISpamFilter import OpenAIFilterConfig
 from src.locale.LocaleFactory import LocaleFactory
 from src.telegram.EnrichedUpdate import EnrichedUpdate
+from src.telegram.TelegramApiStatusService import TelegramApiStatus, TelegramApiStatusService
 from src.util.LoggerUtil import LoggerUtil
 from src.util.admin.AdminProvider import AdminProvider
 from src.util.admin.ChannelAdminProvider import ChannelAdminProvider
@@ -40,13 +41,23 @@ def get_telegram_application_polling(token: str, base_url: str) -> Application:
     return __get_telegram_application_builder(token, base_url).build()
 
 
-def get_webserver(server_port: int, host: str, telegram_application) -> uvicorn.Server:
+def get_webserver(server_port: int,
+                  host: str,
+                  telegram_api_status_service: TelegramApiStatusService,
+                  telegram_application: Application | None = None) -> uvicorn.Server:
     flask_app = Flask(__name__)
 
-    @flask_app.post("/telegram")
-    async def telegram() -> Response:
-        await telegram_application.update_queue.put(Update.de_json(data=request.json, bot=telegram_application.bot))
-        return Response(status=HTTPStatus.OK)
+    if telegram_application is not None:
+        @flask_app.post("/telegram")
+        async def telegram() -> Response:
+            await telegram_application.update_queue.put(Update.de_json(data=request.json, bot=telegram_application.bot))
+            return Response(status=HTTPStatus.OK)
+
+    @flask_app.get("/api/health")
+    def health() -> Response:
+        status: TelegramApiStatus = telegram_api_status_service.get_status()
+        http_status = HTTPStatus.OK if status == TelegramApiStatus.AVAILABLE else HTTPStatus.INTERNAL_SERVER_ERROR
+        return Response(status=http_status)
 
     webserver = uvicorn.Server(
         config=uvicorn.Config(
