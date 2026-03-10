@@ -68,7 +68,7 @@ class TelegramHelper:
         message = await self.send_message(context, chat_id=chat_id, text=text)
         await self.delete_message_with_delay(context, message, remove_in_seconds)
 
-    async def send_temporary_sticker(self, context: CallbackContext, chat_id: int, sticker: str,
+    async def send_sticker(self, context: CallbackContext, chat_id: int, sticker: str,
                                      remove_in_seconds: int = 30,
                                      reply_to_message_id: Optional[int] = None) -> None:
         try:
@@ -85,7 +85,6 @@ class TelegramHelper:
         if message is None:
             self.logger.warning(f"Failed to send sticker to chat {chat_id}: empty Telegram API response")
             return
-        await self.delete_message_with_delay(context, message, remove_in_seconds)
 
     async def send_temporary_reply_and_remove_command(self, context: CallbackContext, command_message: Message,
                                                       text: str, remove_in_seconds: int = 30) -> None:

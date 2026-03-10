@@ -38,6 +38,7 @@ class ReportStatus(Enum):
 class Report:
     reported_message: Message
     reporter: User
+    report_sent_status_message: int = None
     reported_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     notified_admins: dict[int, NotificationMessage] = field(default_factory=dict)
     status: ReportStatus = ReportStatus.PENDING
@@ -147,14 +148,12 @@ class ReportCommandsHandler(BaseHandler):
             return
 
         if reported_message.from_user is None or reported_message.from_user.is_bot or reported_message.is_automatic_forward:
-            await self.telegram_helper.send_temporary_sticker(context, chat_id=update.effective_chat.id,
+            await self.telegram_helper.send_sticker(context, chat_id=update.effective_chat.id,
                                                               sticker=DUMB_ACTION_STICKER_ID, reply_to_message_id=update.message.id)
-            await self.telegram_helper.delete_message_with_delay(context, update.message)
             return
 
         if update.effective_user.id == reported_message.from_user.id or await self.state.is_admin(reported_message.from_user.id, update.effective_chat.id):
-            await self.telegram_helper.send_temporary_reply_and_remove_command(context, update.message,
-                                                                               update.locale.durachok)
+            await self.telegram_helper.send_message(context, update.message.chat_id, update.locale.durachok)
             return
 
         if self._get_report(reported_message.message_id, reported_message.chat_id) is not None:
@@ -172,11 +171,13 @@ class ReportCommandsHandler(BaseHandler):
         self._get_report_list(update.effective_chat.id).append(report)
 
         await self.telegram_helper.try_remove_message(context, update.message)
-        report_status_message = await self.telegram_helper.send_message(
+        report_sent_status_message = await self.telegram_helper.send_message(
             context,
             chat_id=update.effective_chat.id,
-            text=update.locale.report_reporting_now
+            text=update.locale.report_reporting_now,
+            reply_to_message_id=reported_message.id,
         )
+        report.report_sent_status_message = report_sent_status_message
 
         spam_report_subscribers = await self._get_report_subscribers(update.effective_chat.id)
         self.logger.info(f"Sending report to {len(spam_report_subscribers)} subscribers")
@@ -187,12 +188,12 @@ class ReportCommandsHandler(BaseHandler):
 
         notified_admins_count = len(report.notified_admins)
         await context.bot.edit_message_text(
-            chat_id=report_status_message.chat_id,
-            message_id=report_status_message.message_id,
+            chat_id=report_sent_status_message.chat_id,
+            message_id=report_sent_status_message.message_id,
             text=update.locale.report_reported.format(admins_count=notified_admins_count),
             parse_mode="Markdown",
         )
-        await self.telegram_helper.delete_message_with_delay(context, report_status_message)
+
 
     async def handle_banned_user_updates(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         if update.chat_member is None:
@@ -244,6 +245,7 @@ class ReportCommandsHandler(BaseHandler):
         report = self._get_report(button_data.reported_message_id, button_data.reported_message_chat_id)
         report.status = ReportStatus.BANNED
         await self.telegram_helper.try_ban_and_delete_message(context, report.reported_message)
+        await self.telegram_helper.try_remove_message(context, report.report_sent_status_message)
         await self._update_notification_message_by_report(report, update, context)
 
 
@@ -254,6 +256,7 @@ class ReportCommandsHandler(BaseHandler):
             return
         report = self._get_report(button_data.reported_message_id, button_data.reported_message_chat_id)
         report.status = ReportStatus.IGNORED
+        await self.telegram_helper.try_remove_message(context, report.report_sent_status_message)
         await self._update_notification_message_by_report(report, update, context)
 
 
