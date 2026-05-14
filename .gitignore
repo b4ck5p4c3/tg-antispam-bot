@@ -10,3 +10,5 @@ ignore/
 
 AGENTS.md
 /dev/*
+
+.codex
