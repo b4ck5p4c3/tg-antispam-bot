@@ -3,8 +3,8 @@ import logging
 
 class LoggerUtil:
     __LOGGER_LEVELS = {
-        "httpcore.http11": logging.INFO,
-        "httpx": logging.ERROR,
+        "httpcore.http11": logging.DEBUG,
+        "httpx": logging.DEBUG,
     }
 
     @staticmethod

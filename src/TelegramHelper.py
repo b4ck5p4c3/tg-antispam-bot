@@ -7,7 +7,7 @@ from telegram.ext import CallbackContext
 
 from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.util.data.BotState import BotState
-from telegram import Message, ChatPermissions, File, Chat, User
+from telegram import Message, ChatPermissions, File, Chat, User, PhotoSize
 
 
 
@@ -41,13 +41,21 @@ class TelegramHelper:
 
         await self.ban_message_author(context, message)
 
-    async def audit_log_ban_for_message(self, message: Message, update: EnrichedUpdate, context: CallbackContext, message_quote_max_len: int = 200) -> None:
-        truncated_message = message.text[:message_quote_max_len]
+    async def audit_log_ban_for_message(self, message: Message, update: EnrichedUpdate, context: CallbackContext,
+                                        message_quote_max_len: int = 200) -> None:
+        message_text = self.extract_message_text(message)
+        if message_text is None:
+            message_text = update.locale.report_non_text_message_placeholder
+        truncated_message = message_text[:message_quote_max_len]
+        audit_log_message = update.locale.audit_log_user_banned_by_reply.format(
+            banned_user=message.from_user,
+            banned_by=update.effective_user,
+            message=truncated_message,
+            chat=message.chat
+        )
+        message_photo = self.extract_message_photo(message)
 
-        await self.audit_log(context, update.message, update.locale.audit_log_user_banned_by_reply
-                                             .format(banned_user=message.from_user,
-                                                     banned_by=update.effective_user,
-                                                     message=truncated_message, chat=message.chat))
+        await self.audit_log(context, update.message, audit_log_message, photo=message_photo)
 
 
     async def ban_chat_member(self, context: CallbackContext, chat_id: int, user_id: int) -> None:
@@ -62,6 +70,11 @@ class TelegramHelper:
     async def send_message(self, context: CallbackContext, chat_id: int, text: str = None, **kwargs) -> Message:
         return await self.__execute_telegram_api_request(context.bot.send_message, chat_id=chat_id, text=text,
                                                          parse_mode="Markdown", **kwargs)
+
+    async def send_photo(self, context: CallbackContext, chat_id: int, photo: str | PhotoSize,
+                         caption: str | None = None, **kwargs) -> Message:
+        return await self.__execute_telegram_api_request(context.bot.send_photo, chat_id=chat_id, photo=photo,
+                                                         caption=caption, parse_mode="Markdown", **kwargs)
 
     async def send_temporary_message(self, context: CallbackContext, chat_id: int, text: str,
                                      remove_in_seconds: int = 30) -> None:
@@ -103,13 +116,20 @@ class TelegramHelper:
     async def get_chat(self, context: CallbackContext, chat_id: int) -> 'Chat':
         return await self.__execute_telegram_api_request(context.bot.get_chat, chat_id=chat_id)
 
-    async def audit_log(self, context: CallbackContext, source_message: Message, message: str) -> None:
+    async def audit_log(self, context: CallbackContext, source_message: Message, message: str,
+                        photo: str | PhotoSize | None = None) -> None:
         audit_log_chat_id = self.state.get_audit_log_chat_id()
         self.logger.info(f"Sending audit log message `{message}` to chat {audit_log_chat_id}")
-        if audit_log_chat_id is None:
-            await self.send_message(context, chat_id=source_message.chat_id, text=self.__get_audit_log_message(message))
+        target_chat_id = source_message.chat_id if audit_log_chat_id is None else audit_log_chat_id
+        audit_log_message = self.__get_audit_log_message(message)
+        if photo is not None:
+            await self.send_photo(context, chat_id=target_chat_id, photo=photo, caption=audit_log_message,
+                                  has_spoiler=True)
             return
-        await self.send_message(context, chat_id=audit_log_chat_id, text=self.__get_audit_log_message(message))
+        if audit_log_chat_id is None:
+            await self.send_message(context, chat_id=source_message.chat_id, text=audit_log_message)
+            return
+        await self.send_message(context, chat_id=audit_log_chat_id, text=audit_log_message)
 
 
     def get_user_hyperlink(self, user_id: int):
@@ -126,6 +146,12 @@ class TelegramHelper:
         if message.caption is not None:
             return message.caption
         return None
+
+    @staticmethod
+    def extract_message_photo(message: Message) -> Optional[PhotoSize]:
+        if message.photo is None or len(message.photo) == 0:
+            return None
+        return message.photo[-1]
 
     @staticmethod
     def build_message_link(message: Message) -> str:

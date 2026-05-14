@@ -9,3 +9,6 @@ data/openai_config.json
 ignore/
 
 AGENTS.md
+/dev/*
+
+.codex
