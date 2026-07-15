@@ -29,8 +29,12 @@ class SpamFilter:
 
     async def _on_spam(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Bans the user if the message is identified as spam."""
-        user_id = update.message.from_user.id
-        self.logger.warning(f"Banning user {user_id} for sending spam")
+        sender_chat = self.telegram_helper.extract_message_sender_chat(update.message)
+        sender_user = self.telegram_helper.extract_message_user(update.message)
+        if sender_chat is not None:
+            self.logger.warning(f"Banning sender chat {sender_chat.id} for sending spam")
+        elif sender_user is not None:
+            self.logger.warning(f"Banning user {sender_user.id} for sending spam")
         await self.telegram_helper.try_remove_message(context, update.message)
         await self.telegram_helper.ban_message_author(context, update.message)
 
@@ -40,15 +44,19 @@ class SpamFilter:
         if update.message is None:
             self.logger.debug("Update is not a message, skipping spam check")
             return True
+        sender_user = self.telegram_helper.extract_message_user(update.message)
+        sender_user_id = None if sender_user is None else sender_user.id
         conditions = [
             (self.__is_message_type_not_supported(update.message),
              f"Message {update.message.id} type is blacklisted, skipping spam check"),
-            (self.state.is_user_trusted(update.message.from_user.id),
-             f"User {update.message.from_user.id} is trusted, skipping spam check"),
+            (self.telegram_helper.is_message_from_anonymous_admin(update.message),
+             f"Message {update.message.id} was sent by an anonymous admin, skipping spam check"),
+            (sender_user_id is not None and self.state.is_user_trusted(sender_user_id),
+             f"User {sender_user_id} is trusted, skipping spam check"),
             (not self.state.is_chat_moderated(update.message.chat_id),
              f"Chat {update.message.chat_id} is not moderated, skipping spam check"),
-            (await self.state.is_admin(update.effective_user.id, update.effective_chat.id),
-             f"User {update.message.from_user.id} is admin, skipping spam check"),
+            (sender_user_id is not None and await self.state.is_admin(sender_user_id, update.effective_chat.id),
+             f"User {sender_user_id} is admin, skipping spam check"),
         ]
 
         for condition, message in conditions:
@@ -63,12 +71,21 @@ class SpamFilter:
 
     async def _on_pass(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Adds the user to the trusted list if the message is not spam."""
-        self.logger.info(f"Message from user {update.message.from_user.id} is not spam")
+        sender_chat = self.telegram_helper.extract_message_sender_chat(update.message)
+        sender_user = self.telegram_helper.extract_message_user(update.message)
+        if sender_chat is not None:
+            self.logger.info(f"Message from sender chat {sender_chat.id} is not spam")
+        elif sender_user is not None:
+            self.logger.info(f"Message from user {sender_user.id} is not spam")
 
     async def __on_filter_pass(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Executed when the message passes all filters successfully."""
-        self.logger.debug(f"Message from user {update.message.from_user.id} passed all filters, trusting user..")
-        self.state.trust(update.message.from_user.id)
+        sender_user = self.telegram_helper.extract_message_user(update.message)
+        if sender_user is None:
+            self.logger.debug(f"Message {update.message.id} has no user author, skipping trust update")
+            return
+        self.logger.debug(f"Message from user {sender_user.id} passed all filters, trusting user..")
+        self.state.trust(sender_user.id)
 
     from typing import final
 

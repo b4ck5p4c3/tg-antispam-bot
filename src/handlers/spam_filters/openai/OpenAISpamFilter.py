@@ -114,9 +114,12 @@ class OpenAISpamFilter(SpamFilter):
 
     async def _on_spam(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Handles the action to take when a message is identified as spam."""
-        user = update.message.from_user
+        user = self.telegram_helper.extract_message_user(update.message)
         chat_id = update.message.chat_id
         await self.telegram_helper.try_remove_message(context, update.message)
+        if user is None:
+            await self.telegram_helper.ban_message_author(context, update.message)
+            return
         await self.telegram_helper.restrict_chat_member(context, chat_id, user.id,
                                                         ChatPermissions(can_send_messages=False))
         ban_message = await self.telegram_helper.send_message(context, chat_id, self._get_restrict_message(update))
@@ -135,8 +138,9 @@ class OpenAISpamFilter(SpamFilter):
             del self.__MESSAGE_SPAMNESS_MAP[update.message.id]
 
     def _get_restrict_message(self, update: EnrichedUpdate) -> str:
+        user = self.telegram_helper.extract_message_user(update.message)
         return update.locale.openai_user_ban_notification.format(
-            user=update.message.from_user,
+            user=user,
             spamness=self.__MESSAGE_SPAMNESS_MAP[update.message.id],
             ban_delay_min=self.openai_config.ban_delay_sec // 60
         )

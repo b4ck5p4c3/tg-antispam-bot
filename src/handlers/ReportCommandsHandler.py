@@ -140,6 +140,8 @@ class ReportCommandsHandler(BaseHandler):
             return
 
         reported_message = update.message.reply_to_message
+        reported_user = self.telegram_helper.extract_message_user(reported_message)
+        reported_sender_chat = self.telegram_helper.extract_message_sender_chat(reported_message)
 
         if not self.state.is_chat_moderated(reported_message.chat_id):
             await self.telegram_helper.send_temporary_reply_and_remove_command(
@@ -147,12 +149,17 @@ class ReportCommandsHandler(BaseHandler):
             )
             return
 
-        if reported_message.from_user is None or reported_message.from_user.is_bot or reported_message.is_automatic_forward:
+        if (reported_sender_chat is None and (reported_user is None or reported_user.is_bot)) \
+                or reported_message.is_automatic_forward \
+                or self.telegram_helper.is_message_from_anonymous_admin(reported_message):
             await self.telegram_helper.send_sticker(context, chat_id=update.effective_chat.id,
                                                               sticker=DUMB_ACTION_STICKER_ID, reply_to_message_id=update.message.id)
             return
 
-        if update.effective_user.id == reported_message.from_user.id or await self.state.is_admin(reported_message.from_user.id, update.effective_chat.id):
+        if reported_user is not None and (
+                update.effective_user.id == reported_user.id
+                or await self.state.is_admin(reported_user.id, update.effective_chat.id)
+        ):
             await self.telegram_helper.send_message(context, update.message.chat_id, update.locale.durachok)
             return
 

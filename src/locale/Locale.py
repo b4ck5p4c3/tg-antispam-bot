@@ -13,7 +13,10 @@ class Locale(BaseModel):
     audit_log_chat_not_found: str
     ban_failed: str
     ban_success: str
+    ban_channel_failed: str
+    ban_channel_success: str
     audit_log_user_banned_by_reply: str
+    audit_log_channel_banned_by_reply: str
     audit_log_user_banned_by_id: str
     ban_user_not_found: str
     durachok: str

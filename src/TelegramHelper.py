@@ -31,10 +31,18 @@ class TelegramHelper:
         context.job_queue.run_once(lambda ctx: self.try_remove_message(context, message), delay_seconds)
 
     async def ban_message_author(self, context: CallbackContext, message: Message) -> None:
-        user_id = message.from_user.id
         chat_id = message.chat_id
-        self.logger.warning(f"Banning user {user_id}")
-        await self.ban_chat_member(context, chat_id=chat_id, user_id=user_id)
+        sender_chat = self.extract_message_sender_chat(message)
+        if sender_chat is not None:
+            self.logger.warning(f"Banning sender chat {sender_chat.id}")
+            await self.ban_chat_sender_chat(context, chat_id=chat_id, sender_chat_id=sender_chat.id)
+            return
+
+        user = self.extract_message_user(message)
+        if user is None:
+            raise ValueError(f"Cannot determine message author for message {message.message_id}")
+        self.logger.warning(f"Banning user {user.id}")
+        await self.ban_chat_member(context, chat_id=chat_id, user_id=user.id)
 
     async def try_ban_and_delete_message(self, context: CallbackContext, message: Message) -> None:
         await self.try_remove_message(context, message)
@@ -47,12 +55,25 @@ class TelegramHelper:
         if message_text is None:
             message_text = update.locale.report_non_text_message_placeholder
         truncated_message = message_text[:message_quote_max_len]
-        audit_log_message = update.locale.audit_log_user_banned_by_reply.format(
-            banned_user=message.from_user,
-            banned_by=update.effective_user,
-            message=truncated_message,
-            chat=message.chat
-        )
+        sender_chat = self.extract_message_sender_chat(message)
+        if sender_chat is not None:
+            audit_log_message = update.locale.audit_log_channel_banned_by_reply.format(
+                banned_channel_name=self.get_chat_display_name(sender_chat),
+                banned_channel_id=sender_chat.id,
+                banned_by=update.effective_user,
+                message=truncated_message,
+                chat=message.chat
+            )
+        else:
+            banned_user = self.extract_message_user(message)
+            if banned_user is None:
+                raise ValueError(f"Cannot determine message author for audit log for message {message.message_id}")
+            audit_log_message = update.locale.audit_log_user_banned_by_reply.format(
+                banned_user=banned_user,
+                banned_by=update.effective_user,
+                message=truncated_message,
+                chat=message.chat
+            )
         message_photo = self.extract_message_photo(message)
 
         await self.audit_log(context, update.message, audit_log_message, photo=message_photo)
@@ -61,6 +82,10 @@ class TelegramHelper:
     async def ban_chat_member(self, context: CallbackContext, chat_id: int, user_id: int) -> None:
         await self.__execute_telegram_api_request(context.bot.ban_chat_member, chat_id=chat_id, user_id=user_id)
         self.state.untrust(user_id)
+
+    async def ban_chat_sender_chat(self, context: CallbackContext, chat_id: int, sender_chat_id: int) -> None:
+        await self.__execute_telegram_api_request(context.bot.ban_chat_sender_chat, chat_id=chat_id,
+                                                  sender_chat_id=sender_chat_id)
 
     async def add_message_reaction(self, context: CallbackContext, message: Message, reaction: str) -> None:
         await self.__execute_telegram_api_request(context.bot.set_message_reaction, chat_id=message.chat_id,
@@ -148,10 +173,38 @@ class TelegramHelper:
         return None
 
     @staticmethod
+    def extract_message_user(message: Message) -> Optional[User]:
+        if message.sender_chat is not None:
+            return None
+        return message.from_user
+
+    @staticmethod
+    def extract_message_sender_chat(message: Message) -> Optional[Chat]:
+        if message.sender_chat is None or message.sender_chat.id == message.chat_id:
+            return None
+        return message.sender_chat
+
+    @staticmethod
+    def is_message_from_anonymous_admin(message: Message) -> bool:
+        return message.sender_chat is not None and message.sender_chat.id == message.chat_id
+
+    @staticmethod
     def extract_message_photo(message: Message) -> Optional[PhotoSize]:
         if message.photo is None or len(message.photo) == 0:
             return None
         return message.photo[-1]
+
+    @staticmethod
+    def get_chat_display_name(chat: Chat) -> str:
+        if chat.title is not None:
+            return chat.title
+        if chat.first_name is not None and chat.last_name is not None:
+            return f"{chat.first_name} {chat.last_name}"
+        if chat.first_name is not None:
+            return chat.first_name
+        if chat.username is not None:
+            return chat.username
+        return str(chat.id)
 
     @staticmethod
     def build_message_link(message: Message) -> str:

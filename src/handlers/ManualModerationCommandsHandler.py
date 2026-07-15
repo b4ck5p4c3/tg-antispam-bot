@@ -10,7 +10,10 @@ from src.telegram.EnrichedUpdate import EnrichedUpdate
 
 def _extract_ban_user_id(update: EnrichedUpdate) -> int | None:
     if update.message.reply_to_message is not None:
-        return update.message.reply_to_message.from_user.id
+        reply = update.message.reply_to_message
+        if reply.sender_chat is None and reply.from_user is not None:
+            return reply.from_user.id
+        return None
     user_id = get_int_argument_value(update, 1)
     return user_id
 
@@ -28,34 +31,54 @@ class ManualModerationCommandsHandler(BaseHandler):
     @admin_command
     async def handle_ban_user(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Handles the /ban command."""
+        reply_message = update.message.reply_to_message
         ban_user_id = _extract_ban_user_id(update)
+        ban_sender_chat = None if reply_message is None else self.telegram_helper.extract_message_sender_chat(reply_message)
         await self.telegram_helper.delete_message_with_delay(context, update.message, 20)
-        if await self.state.is_admin(ban_user_id, update.effective_chat.id):
+        if reply_message is not None and self.telegram_helper.is_message_from_anonymous_admin(reply_message):
             await self.telegram_helper.send_message(context, chat_id=update.message.chat_id,
                                                     text=update.locale.durachok)
             return
-        if ban_user_id is None:
+        if ban_user_id is not None and await self.state.is_admin(ban_user_id, update.effective_chat.id):
+            await self.telegram_helper.send_message(context, chat_id=update.message.chat_id,
+                                                    text=update.locale.durachok)
+            return
+        if ban_user_id is None and ban_sender_chat is None:
             await self.telegram_helper.send_temporary_message(context, chat_id=update.message.chat_id,
                                                               text=update.locale.ban_user_not_found,
                                                               remove_in_seconds=120)
             return
         chat_id = update.effective_chat.id
         try:
-            await self.telegram_helper.ban_chat_member(context, chat_id=chat_id, user_id=ban_user_id)
+            if ban_sender_chat is not None:
+                await self.telegram_helper.ban_message_author(context, reply_message)
+            else:
+                await self.telegram_helper.ban_chat_member(context, chat_id=chat_id, user_id=ban_user_id)
         except TelegramError as e:
-            self.logger.warning(f"Failed to ban user {ban_user_id}: {e}")
+            if ban_sender_chat is not None:
+                self.logger.warning(f"Failed to ban sender chat {ban_sender_chat.id}: {e}")
+                error_text = update.locale.ban_channel_failed.format(
+                    channel_id=ban_sender_chat.id, error=e.message
+                )
+            else:
+                self.logger.warning(f"Failed to ban user {ban_user_id}: {e}")
+                error_text = update.locale.ban_failed.format(
+                    user_id=ban_user_id, error=e.message
+                )
             await self.telegram_helper.send_temporary_message(context, chat_id=chat_id,
-                                                              text=update.locale.ban_failed.format(
-                                                                  user_id=ban_user_id, error=e.message
-                                                              ), remove_in_seconds=120)
+                                                              text=error_text, remove_in_seconds=120)
             return
-        if update.message.reply_to_message is not None:
-            await self.telegram_helper.try_remove_message(context, update.message.reply_to_message)
+        if reply_message is not None:
+            await self.telegram_helper.try_remove_message(context, reply_message)
+        if ban_sender_chat is not None:
+            success_text = update.locale.ban_channel_success.format(channel_id=ban_sender_chat.id)
+        else:
+            success_text = update.locale.ban_success.format(user_id=ban_user_id)
         await self.telegram_helper.send_temporary_message(context, chat_id=chat_id,
-                                                          text=update.locale.ban_success.format(user_id=ban_user_id),
+                                                          text=success_text,
                                                           remove_in_seconds=20)
-        if update.message.reply_to_message is not None:
-            await self.telegram_helper.audit_log_ban_for_message(update.message.reply_to_message, update, context)
+        if reply_message is not None:
+            await self.telegram_helper.audit_log_ban_for_message(reply_message, update, context)
         else:
             await self.telegram_helper.audit_log(context, update.message, update.locale.audit_log_user_banned_by_id
                                                  .format(banned_id=ban_user_id, banned_by=update.effective_user,
