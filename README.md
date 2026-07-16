@@ -58,9 +58,37 @@ The following environment variables are used to configure the bot:
 - `TELEGRAM_API_URL`: Base URL for Telegram API (Optional, default: 'https://api.telegram.org')
 - `WEBHOOK_PORT`: Port on which the webhook server will run (Optional, default: `8000`)
 - `DATA_FOLDER_PATH`: Path to the data files directory (Optional, default: `data`)
+- `LOCALE_FOLDER_PATH`: Path to locale files (Optional, defaults to `<DATA_FOLDER_PATH>/locale`; the Docker image uses `/app/locales`)
 - `SWYNCA_API_KEY`: API key for accessing Swynca (Optional if --no-swynca flag is used)
 - `TESSERACT_PATH`: Path to the tesseract executable (Optional, default: '/usr/bin/tesseract')
 - `TESSERACT_LANG`: Language code for tesseract OCR (Optional, default: 'rus')
+
+Locale files are bundled outside `/app/data` in the Docker image. Updating and recreating the container therefore
+loads the locale files from the new image even when `/app/data` is mounted as a persistent volume. Set
+`LOCALE_FOLDER_PATH=/app/data/locale` explicitly only if locale files should be managed in the volume instead.
+
+## OpenAI prompt configuration
+
+The `prompt` field in `data/openai_config.json` selects either the prompt bundled with the application:
+
+```json
+{
+  "prompt": "default"
+}
+```
+
+or a custom prompt stored in the persistent configuration:
+
+```json
+{
+  "prompt": "custom",
+  "custom_prompt": "Analyze this message for spam..."
+}
+```
+
+In `default` mode, the current prompt from `src/handlers/spam_filters/openai/OpenAIConfig.py` is used, so prompt
+updates are applied when the container image is updated. Legacy configurations containing the prompt text directly in
+the `prompt` field are migrated to `custom` automatically on startup.
 
 ## Healthcheck endpoint
 

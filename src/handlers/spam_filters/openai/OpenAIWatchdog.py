@@ -70,7 +70,7 @@ class OpenAIWatchdog:
                         "content": [
                             {
                                 "type": "text",
-                                "text": self.config.prompt,
+                                "text": self.config.get_prompt(),
                             }
                         ],
                     },

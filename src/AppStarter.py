@@ -85,7 +85,9 @@ class BotBuilder:
         return wrapper
 
     def __get_locale_factory(self):
-        return LocaleFactory(os.path.join(self.__get_data_folder_path(), "locale"))
+        default_locale_folder_path = os.path.join(self.__get_data_folder_path(), "locale")
+        locale_folder_path = os.getenv("LOCALE_FOLDER_PATH") or default_locale_folder_path
+        return LocaleFactory(locale_folder_path)
 
     def __get_data_folder_path(self):
         return os.getenv("DATA_FOLDER_PATH", os.path.join(self.workdir, "data"))
@@ -161,4 +163,7 @@ class BotBuilder:
 
     def __get_openai_config(self) -> OpenAIFilterConfig:
         openai_config_path = os.path.join(self.__get_data_folder_path(), "openai_config.json")
-        return JsonModelRepo(openai_config_path).load(OpenAIFilterConfig, OpenAIFilterConfig())
+        openai_config_repo = JsonModelRepo(openai_config_path)
+        openai_config = openai_config_repo.load(OpenAIFilterConfig, OpenAIFilterConfig())
+        openai_config_repo.save(openai_config)
+        return openai_config

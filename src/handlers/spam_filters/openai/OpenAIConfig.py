@@ -1,5 +1,7 @@
+from enum import StrEnum
+
 from openai.types import ChatModel
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 
 default_prompt = """
@@ -34,8 +36,14 @@ class OpenAIPromptConfig(BaseModel):
     presence_penalty: float = 0.0
 
 
+class OpenAIPromptMode(StrEnum):
+    DEFAULT = "default"
+    CUSTOM = "custom"
+
+
 class OpenAIFilterConfig(BaseModel):
-    prompt: str = default_prompt
+    prompt: OpenAIPromptMode = OpenAIPromptMode.DEFAULT
+    custom_prompt: str | None = None
     prompt_config: OpenAIPromptConfig = OpenAIPromptConfig()
     model: ChatModel = "gpt-4o-mini"
     min_spamness_percent: int = 65
@@ -43,3 +51,32 @@ class OpenAIFilterConfig(BaseModel):
     ban_notification_message_delete_delay_sec: int = 30
     sussy_message_min_spamness: int = 35
     sussy_message_reaction: str = "👀"
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_prompt(cls, value):
+        if not isinstance(value, dict):
+            return value
+
+        prompt = value.get("prompt")
+        prompt_modes = (OpenAIPromptMode.DEFAULT.value, OpenAIPromptMode.CUSTOM.value)
+        if not isinstance(prompt, str) or prompt in prompt_modes:
+            return value
+
+        migrated_value = dict(value)
+        migrated_value["prompt"] = OpenAIPromptMode.CUSTOM.value
+        migrated_value.setdefault("custom_prompt", prompt)
+        return migrated_value
+
+    @model_validator(mode="after")
+    def validate_custom_prompt(self):
+        if self.prompt == OpenAIPromptMode.CUSTOM:
+            if self.custom_prompt is None or self.custom_prompt.strip() == "":
+                raise ValueError("custom_prompt must be set when prompt is custom")
+        return self
+
+    def get_prompt(self) -> str:
+        if self.prompt == OpenAIPromptMode.DEFAULT:
+            return default_prompt
+        assert self.custom_prompt is not None
+        return self.custom_prompt

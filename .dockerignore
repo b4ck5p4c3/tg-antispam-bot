@@ -1,0 +1,9 @@
+*
+!Dockerfile
+!requirements.txt
+!main.py
+!src/
+!src/**
+!data/
+!data/locale/
+!data/locale/**
