@@ -40,37 +40,34 @@ class EventSubscriptionCommandsHandler(BaseHandler):
     async def _handle_subscribe(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         user_id = update.effective_user.id
         if not self.state.subscribe_event(self._subscription_event, user_id):
-            await self.telegram_helper.send_temporary_reply_and_remove_command(
-                context,
-                update.message,
-                self._get_locale_text(update, "already_subscribed"),
-            )
+            await self._send_subscription_reply(update, context, "already_subscribed")
             return
 
-        await self.telegram_helper.send_temporary_reply_and_remove_command(
-            context,
-            update.message,
-            self._get_locale_text(update, "subscribed"),
-        )
+        await self._send_subscription_reply(update, context, "subscribed")
         self.logger.info(f"User {user_id} subscribed to {self._subscription_event.value} events")
 
     @admin_command
     async def _handle_unsubscribe(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         user_id = update.effective_user.id
         if not self.state.unsubscribe_event(self._subscription_event, user_id):
-            await self.telegram_helper.send_temporary_reply_and_remove_command(
-                context,
-                update.message,
-                self._get_locale_text(update, "not_subscribed"),
-            )
+            await self._send_subscription_reply(update, context, "not_subscribed")
             return
 
-        await self.telegram_helper.send_temporary_reply_and_remove_command(
-            context,
-            update.message,
-            self._get_locale_text(update, "unsubscribed"),
-        )
+        await self._send_subscription_reply(update, context, "unsubscribed")
         self.logger.info(f"User {user_id} unsubscribed from {self._subscription_event.value} events")
+
+    async def _send_subscription_reply(
+            self,
+            update: EnrichedUpdate,
+            context: CallbackContext,
+            locale_suffix: str,
+    ) -> None:
+        await self.telegram_helper.send_message(
+            context,
+            chat_id=update.effective_chat.id,
+            text=self._get_locale_text(update, locale_suffix),
+            reply_to_message_id=update.message.id,
+        )
 
     async def _handle_list_subscribers(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         subscribers = await self._get_event_subscribers(update.effective_chat.id)
