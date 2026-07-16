@@ -28,6 +28,8 @@ message or banning the user
 - `/abandon`: Remove chat from the list of moderated chats
 - `/ban`: Ban user from the chat
 - `/banc`: Restrict reposting of messages from the chat (only first message)
+- `/report`: Report spam and manage report notification subscriptions
+- `/as_service`: Manage service notification subscriptions
 - `/set_audit_log`: Set chat for [audit logging](#audit-logging)
 - `/unset_audit_log`: Unset chat for audit logging
 
@@ -50,7 +52,9 @@ The following environment variables are used to configure the bot:
 
 - `TELEGRAM_BOT_TOKEN`: Token for authenticating the Telegram bot
 - `OPENAI_API_KEY`: API key for accessing OpenAI services (Optional)
+- `OPENAI_BASE_URL`: Alternate OpenAI-compatible API URL (Optional, useful for local testing)
 - `OPENAI_PROXY_URL`: Proxy URL for OpenAI requests (Optional)
+- `OPENAI_WATCHDOG_INTERVAL_SECONDS`: OpenAI availability check interval (Optional, default: `3600`)
 - `TELEGRAM_API_URL`: Base URL for Telegram API (Optional, default: 'https://api.telegram.org')
 - `WEBHOOK_PORT`: Port on which the webhook server will run (Optional, default: `8000`)
 - `DATA_FOLDER_PATH`: Path to the data files directory (Optional, default: `data`)
@@ -64,6 +68,10 @@ The following environment variables are used to configure the bot:
 - Returns `200` with `{"telegram_api":"available"}` when Telegram Bot API is reachable.
 - Returns `500` with `{"telegram_api":"unavailable"}` when Telegram Bot API is unreachable.
 - Availability is checked in background every 10 seconds in both polling and webhook modes.
+
+## Userbot debugger
+
+An interactive Telethon client for testing command flows and OpenAI service notifications is available in [`dev/userbot.py`](dev/userbot.py). See [`dev/README.md`](dev/README.md) for setup, interactive commands, automated subscription checks, and the watchdog outage/recovery scenario.
 
 ## Contribution
 

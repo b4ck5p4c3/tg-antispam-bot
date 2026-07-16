@@ -44,3 +44,12 @@ class Locale(BaseModel):
     report_notification_message_user_ignored: str
     report_list_empty: str
     report_list_subscribers: str
+    service_usage: str
+    service_subscribed: str
+    service_unsubscribed: str
+    service_already_subscribed: str
+    service_not_subscribed: str
+    service_list_empty: str
+    service_list_subscribers: str
+    openai_service_unavailable: str
+    openai_service_recovered: str

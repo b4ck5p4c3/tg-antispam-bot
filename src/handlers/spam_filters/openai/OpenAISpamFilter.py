@@ -1,59 +1,14 @@
-import os
 import re
 
-import httpx
-from openai import OpenAI
-from openai.types import ChatModel
-from pydantic import BaseModel
 from telegram import ChatPermissions
 from telegram.ext import CallbackContext
 
 from src.handlers.spam_filters.SpamFilter import SpamFilter
+from src.handlers.spam_filters.openai.OpenAIConfig import OpenAIFilterConfig
+from src.handlers.spam_filters.openai.OpenAIWatchdog import OpenAIWatchdog
 from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.TelegramHelper import TelegramHelper
 from src.util.data.BotState import BotState
-
-default_prompt = """
-Please analyze the message provided below for signs of spam or fraud. Pay attention to the following aspects:
-
-- Offers of high income in a short time or without effort.
-- Invitations to contact via private messages or external links.
-- Use of nonsensical symbols, emojis, or repetitive phrases.
-- Advertising of dubious services or goods.
-- Presence of links to external sites, bots, or suspicious resources.
-- Promises of unrealistically favorable conditions.
-- Casino ads
-- ANY job offer
-- Crypto buying and selling offers
-- Messages that disguise promotion as "personal notes/materials" and invite users to contact privately
-  (for example: trading "step-by-step guide", "human language", "if interested, contact me").
-
-Note that messages are sent in a technical community chat, so discussions of hacks, exploits, and other specialized terms are absolutely normal. 
-Also, keep in mind that most messages will be in Russian, and this is not a sign of spam. Also in the end of the message i'll provide a attachments transcription, please use it for spam analysis.
-After analysis, provide a brief justification of your conclusions and evaluate the "spamness" of the message as a percentage from 0% to 100%, where 0% is absolutely not spam, and 100% is clear spam. 
-If the message is too short or lacks logical content, report this and set the spamness to 0%.
-
-Format your response as follows (STRICTLY IN THIS FORMAT, DEVIATION IS PROHIBITED): [Your justification] (spamness [percentage]%)
-"""
-
-
-class OpenAIPromptConfig(BaseModel):
-    temperature: float = 1.0
-    max_tokens: int = 512
-    top_p: float = 1.0
-    frequency_penalty: float = 0.0
-    presence_penalty: float = 0.0
-
-
-class OpenAIFilterConfig(BaseModel):
-    prompt: str = default_prompt
-    prompt_config: OpenAIPromptConfig = OpenAIPromptConfig()
-    model: ChatModel = "gpt-4o-mini"
-    min_spamness_percent: int = 65
-    ban_delay_sec: int = 60 * 10
-    ban_notification_message_delete_delay_sec: int = 30
-    sussy_message_min_spamness: int = 35
-    sussy_message_reaction: str = "👀"
 
 
 def prepare_message_for_ai(update: EnrichedUpdate) -> str:
@@ -73,17 +28,15 @@ class OpenAISpamFilter(SpamFilter):
     __MESSAGE_SPAMNESS_MAP = {}
     _filter_name = "OpenAI"
 
-    def __init__(self, state: BotState, openai_config: OpenAIFilterConfig):
+    def __init__(
+            self,
+            state: BotState,
+            openai_config: OpenAIFilterConfig,
+            openai_watchdog: OpenAIWatchdog,
+    ):
         super().__init__(state)
-        token = os.environ.get("OPENAI_API_KEY")
-        proxy_url = os.environ.get("OPENAI_PROXY_URL")
-        if not token:
-            self.logger.warning("OPENAI_TOKEN token is not set. Module is disabled")
-            self.openai_client = None
-        else:
-            self.openai_client = OpenAI() if proxy_url is None or proxy_url == "" else OpenAI(
-                http_client=httpx.Client(proxy=proxy_url))
         self.openai_config = openai_config
+        self.openai_watchdog = openai_watchdog
 
     def _find_spamness_percent(self, text: str) -> int:
         percent_search = list(re.finditer(r"(\d+)%", text))
@@ -100,11 +53,10 @@ class OpenAISpamFilter(SpamFilter):
             return self._NOT_FOUND
 
     async def _is_spam(self, update: EnrichedUpdate, context: CallbackContext) -> bool:
-        if not self.openai_client:
-            return False
         """Checks if message is spam. Returns true if message is spam"""
-        response = self._openai_check_message(prepare_message_for_ai(update))
-        answer_text = response.choices[0].message.content
+        answer_text = await self.openai_watchdog.analyze_message(context, prepare_message_for_ai(update))
+        if answer_text is None:
+            return False
         spamness_percent = self._find_spamness_percent(answer_text)
         if spamness_percent == self._NOT_FOUND:
             return False
@@ -144,37 +96,3 @@ class OpenAISpamFilter(SpamFilter):
             spamness=self.__MESSAGE_SPAMNESS_MAP[update.message.id],
             ban_delay_min=self.openai_config.ban_delay_sec // 60
         )
-
-    def _openai_check_message(self, message: str):
-        response = self.openai_client.chat.completions.create(
-            model=self.openai_config.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": self.openai_config.prompt
-                        }
-                    ]
-                },
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": message
-                        }
-                    ]
-                }
-            ],
-            temperature=self.openai_config.prompt_config.temperature,
-            max_tokens=self.openai_config.prompt_config.max_tokens,
-            top_p=self.openai_config.prompt_config.top_p,
-            frequency_penalty=self.openai_config.prompt_config.frequency_penalty,
-            presence_penalty=self.openai_config.prompt_config.presence_penalty,
-            response_format={
-                "type": "text"
-            }
-        )
-        return response

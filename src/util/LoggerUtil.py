@@ -3,8 +3,9 @@ import logging
 
 class LoggerUtil:
     __LOGGER_LEVELS = {
-        "httpcore.http11": logging.INFO,
+        "httpcore": logging.INFO,
         "httpx": logging.ERROR,
+        "telegram": logging.INFO,
     }
 
     @staticmethod

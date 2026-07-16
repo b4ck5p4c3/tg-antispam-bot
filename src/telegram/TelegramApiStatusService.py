@@ -1,6 +1,7 @@
 import threading
 from enum import StrEnum
 
+from apscheduler.jobstores.base import JobLookupError
 from telegram.error import NetworkError, TelegramError
 from telegram.ext import Application, ContextTypes, Job
 
@@ -30,9 +31,16 @@ class TelegramApiStatusService:
         )
 
     def stop(self):
-        if self._job is not None:
-            self._job.schedule_removal()
-            self._job = None
+        if self._job is None:
+            return
+
+        job = self._job
+        self._job = None
+        try:
+            job.schedule_removal()
+        except JobLookupError:
+            # Application.run_polling() may already have stopped the scheduler.
+            pass
 
     def is_available(self) -> bool:
         with self._status_lock:

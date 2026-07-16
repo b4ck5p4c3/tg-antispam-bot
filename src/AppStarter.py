@@ -11,9 +11,11 @@ from src.handlers.CacheHandler import CacheHandler
 from src.handlers.ConfigurationCommandsHandler import ConfigurationCommandsHandler
 from src.handlers.ManualModerationCommandsHandler import ManualModerationCommandsHandler
 from src.handlers.ReportCommandsHandler import ReportCommandsHandler
+from src.handlers.ServiceNotificationsHandler import ServiceNotificationsHandler
 from src.handlers.spam_filters.FilterFactory import FilterFactory
 from src.handlers.spam_filters.SpamFilter import SpamFilter
-from src.handlers.spam_filters.openai.OpenAISpamFilter import OpenAIFilterConfig
+from src.handlers.spam_filters.openai.OpenAIConfig import OpenAIFilterConfig
+from src.handlers.spam_filters.openai.OpenAIWatchdog import OpenAIWatchdog
 from src.locale.LocaleFactory import LocaleFactory
 from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.telegram.TelegramApiStatusService import TelegramApiStatus, TelegramApiStatusService
@@ -100,7 +102,13 @@ class BotBuilder:
         if self.telegram_application is None:
             raise ValueError("Telegram application is not set")
         state = self.__get_state()
-        antispam_filters: SpamFilter = self.__get_antispam_filter_chain(state)
+        openai_config = self.__get_openai_config()
+        service_notifications_handler = ServiceNotificationsHandler(
+            state,
+            self.__get_locale_factory().get_default_locale(),
+        )
+        openai_watchdog = OpenAIWatchdog(openai_config, service_notifications_handler)
+        antispam_filters: SpamFilter = FilterFactory.get_default_chain(state, openai_config, openai_watchdog)
 
         configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(state)
         manual_commands_handler: ManualModerationCommandsHandler = ManualModerationCommandsHandler(state)
@@ -116,6 +124,7 @@ class BotBuilder:
         self.__add_command_handler("ban", manual_commands_handler.handle_ban_user)
         self.__add_command_handler("banc", manual_commands_handler.handle_ban_community)
         self.__add_command_handler("report", report_commands_handler.handle_report_command)
+        self.__add_command_handler("as_service", service_notifications_handler.handle_service_command)
         self.telegram_application.add_handler(
             TypeHandler(Update, self.__with_enriched_update(cache_handler.handle_update)),
             group=-1
@@ -131,6 +140,7 @@ class BotBuilder:
             CallbackQueryHandler(self.__with_enriched_update(button_click_handler.handle_button_click_and_route)))
         self.telegram_application.add_handler(
             MessageHandler(filters.ALL, self.__with_enriched_update(antispam_filters.apply)))
+        openai_watchdog.start(self.telegram_application)
 
     def __add_command_handler(self, command: str, handler):
         self.telegram_application.add_handler(CommandHandler(command, self.__with_enriched_update(handler)))
@@ -149,8 +159,6 @@ class BotBuilder:
         return ChannelAdminProvider(LoggerUtil.get_logger("AdminProvider", "ChannelAdminProvider"),
                                     self.telegram_application.bot)
 
-    def __get_antispam_filter_chain(self, state: BotState) -> SpamFilter:
+    def __get_openai_config(self) -> OpenAIFilterConfig:
         openai_config_path = os.path.join(self.__get_data_folder_path(), "openai_config.json")
-        openai_config: OpenAIFilterConfig = JsonModelRepo(openai_config_path).load(OpenAIFilterConfig,
-                                                                                   OpenAIFilterConfig())
-        return FilterFactory.get_default_chain(state, openai_config)
+        return JsonModelRepo(openai_config_path).load(OpenAIFilterConfig, OpenAIFilterConfig())

@@ -1,28 +1,22 @@
-from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Optional
-import inspect
 
-from telegram import Update, Message, User, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup
+from telegram import Update, Message, User, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.constants import ChatMemberStatus
 from telegram.error import TelegramError
 from telegram.ext import CallbackContext
 
-from src.handlers.BaseHandler import BaseHandler, get_argument_value, admin_command
+from src.handlers.BaseHandler import get_argument_value
 from src.handlers.ButtonClickHandler import button_click
+from src.handlers.EventSubscriptionCommandsHandler import EventSubscriptionCommandsHandler
 from src.telegram.EnrichedUpdate import EnrichedUpdate
-from src.telegram.KeyboardData import KeyboardData, parse_keyboard_data
+from src.telegram.KeyboardData import KeyboardData
 from src.util.data.BotEvent import BotEvent
 
 DUMB_ACTION_STICKER_ID = "CAACAgIAAxkBAAEQsT5pqwQcNtvIzNeh7_9r0jNl25TxBgACTyQAAm8igUvtKv-k7WtQwDoE"
 REPORTS_PER_HOUR_LIMIT = 5
-
-class ReportCommandAction(Enum):
-    SUBSCRIBE = ["subscribe", "sub"]
-    UNSUBSCRIBE = ["unsubscribe", "unsub"]
-    LIST = ["list", "ls"]
 
 @dataclass
 class NotificationMessage:
@@ -55,82 +49,18 @@ class ReportBanKeyboardData(ReportActionKeyboardData):
 
 
 
-class ReportCommandsHandler(BaseHandler):
+class ReportCommandsHandler(EventSubscriptionCommandsHandler):
 
     chat_report_list: dict[int, list[Report]] = {}
+    _subscription_event = BotEvent.REPORT
+    _subscription_locale_prefix = "report"
 
     async def handle_report_command(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         action = get_argument_value(update, 1)
         if action is None:
             await self.handle_spam_report(update, context)
             return
-
-        action_handlers: dict[ReportCommandAction, Callable[[EnrichedUpdate, CallbackContext], Awaitable[None]]] = {
-            ReportCommandAction.SUBSCRIBE: self.handle_subscribe_reports,
-            ReportCommandAction.UNSUBSCRIBE: self.handle_unsubscribe_reports,
-            ReportCommandAction.LIST: self.handle_list_report_subscribers,
-        }
-        selected_action_handler = None
-        for action_handler_command, action_handler in action_handlers.items():
-            if action in action_handler_command.value:
-                selected_action_handler = action_handler
-
-
-        if selected_action_handler is None:
-            await self.telegram_helper.send_temporary_reply_and_remove_command(context, update.message,
-                                                                               update.locale.report_usage)
-            return
-
-        await selected_action_handler(update, context)
-
-
-    @admin_command
-    async def handle_subscribe_reports(self, update: EnrichedUpdate, context: CallbackContext) -> None:
-        user_id = update.effective_user.id
-        if not self.state.subscribe_event(BotEvent.REPORT, user_id):
-            await self.telegram_helper.send_temporary_reply_and_remove_command(
-                context, update.message, update.locale.report_already_subscribed
-            )
-            return
-        await self.telegram_helper.send_temporary_reply_and_remove_command(
-            context, update.message, update.locale.report_subscribed
-        )
-        self.logger.info(f"User {user_id} subscribed to report events")
-
-    @admin_command
-    async def handle_unsubscribe_reports(self, update: EnrichedUpdate, context: CallbackContext) -> None:
-        user_id = update.effective_user.id
-        if not self.state.unsubscribe_event(BotEvent.REPORT, user_id):
-            await self.telegram_helper.send_temporary_reply_and_remove_command(
-                context, update.message, update.locale.report_not_subscribed
-            )
-            return
-        await self.telegram_helper.send_temporary_reply_and_remove_command(
-            context, update.message, update.locale.report_unsubscribed
-        )
-        self.logger.info(f"User {user_id} unsubscribed from report events")
-
-
-    async def handle_list_report_subscribers(self, update: EnrichedUpdate, context: CallbackContext) -> None:
-        subscribers = await self._get_report_subscribers(update.effective_chat.id)
-        if len(subscribers) == 0:
-            await self.telegram_helper.send_message(
-                context,
-                chat_id=update.effective_chat.id,
-                text=update.locale.report_list_empty,
-                reply_to_message_id=update.message.id,
-            )
-            return
-
-        subscribers_hyperlinks = [self.telegram_helper.get_user_hyperlink(user_id) for user_id in subscribers]
-        subscribers_list_md = "\n".join(f"{index}. {user_hyperlink}"
-                                        for index, user_hyperlink in enumerate(subscribers_hyperlinks, start=1))
-        await self.telegram_helper.send_message(
-            context,
-            chat_id=update.effective_chat.id,
-            text=update.locale.report_list_subscribers.format(subscribers=subscribers_list_md),
-            reply_to_message_id=update.message.id,
-        )
+        await self.handle_subscription_command(update, context)
 
     async def handle_spam_report(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         if update.message.reply_to_message is None:
@@ -186,7 +116,7 @@ class ReportCommandsHandler(BaseHandler):
         )
         report.report_sent_status_message = report_sent_status_message
 
-        spam_report_subscribers = await self._get_report_subscribers(update.effective_chat.id)
+        spam_report_subscribers = await self._get_event_subscribers(update.effective_chat.id)
         self.logger.info(f"Sending report to {len(spam_report_subscribers)} subscribers")
         for report_subscriber_id in spam_report_subscribers:
             notification_message = await self._notify_report_subscriber(report_subscriber_id, report, update, context)
@@ -219,9 +149,9 @@ class ReportCommandsHandler(BaseHandler):
             report.status = ReportStatus.BANNED
             await self._update_notification_message_by_report(report, update, context)
 
-    async def _get_report_subscribers(self, chat_id: int) -> list[int]:
+    async def _get_event_subscribers(self, chat_id: int) -> list[int]:
         spam_report_subscribers = self.state.get_event_subscribers(BotEvent.REPORT)
-        for report_subscriber_id in spam_report_subscribers:
+        for report_subscriber_id in list(spam_report_subscribers):
             if not await self.state.is_admin(report_subscriber_id, chat_id):
                 self.state.unsubscribe_event(BotEvent.REPORT, report_subscriber_id)
                 spam_report_subscribers.remove(report_subscriber_id)

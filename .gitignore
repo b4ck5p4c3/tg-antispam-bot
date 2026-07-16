@@ -9,6 +9,10 @@ data/openai_config.json
 ignore/
 
 AGENTS.md
-/dev/*
+
+dev/*.log
+dev/*.log.*
+dev/*.session*
+dev/userbot_config.json
 
 .codex
