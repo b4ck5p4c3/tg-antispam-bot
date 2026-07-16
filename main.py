@@ -20,10 +20,18 @@ WEBHOOK_HOST = os.getenv("WEBHOOK_HOST", "0.0.0.0")
 argument_parser: ArgumentParser = ArgumentParser()
 argument_parser.add_argument("--polling", dest="polling", default=False, action="store_true")
 argument_parser.add_argument("--no-swynca", dest="no_swynca", default=False, action="store_true")
+argument_parser.add_argument(
+    "--development",
+    default=False,
+    action="store_true",
+    help="Enable development-only behavior, including automatic unban after moderation",
+)
 args: Namespace = argument_parser.parse_args()
 
 
 def main():
+    if args.development:
+        os.environ["DEVELOPMENT_MODE"] = "true"
     logger = LoggerUtil.get_logger("AppStarter", "main")
     telegram_application: Application = __get_application(args.polling)
     telegram_api_status_service = TelegramApiStatusService()

@@ -1,5 +1,5 @@
 {
-  "openai_user_ban_notification": "[{user.first_name}](tg://user?id={user.id}) You have been restricted. Spamness: {spamness}%. \n\n If you think this is a mistake, please contact the admin. Your account will be banned in {ban_delay_min} minutes.",
+  "openai_user_ban_notification": "[{user.first_name}](tg://user?id={user.id}) You have been restricted. Reason: {reason}\n\nIf you think this is a mistake, please contact the admin. Your account will be banned in {ban_delay_min} minutes.",
   "chat_added_to_moderate": "Chat {chat_id} is now being moderated",
   "chat_already_moderated": "Chat {chat_id} is already moderated",
   "chat_removed_from_moderate": "Chat {chat_id} is no longer being moderated",

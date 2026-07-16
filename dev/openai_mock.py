@@ -26,13 +26,14 @@ class OpenAIMockRequestHandler(BaseHTTPRequestHandler):
     server: OpenAIMockServer
 
     def do_POST(self) -> None:
-        if not self.path.rstrip("/").endswith("/chat/completions"):
+        if not self.path.rstrip("/").endswith("/responses"):
             self._send_json(404, {"error": {"message": "Unknown mock endpoint"}})
             return
 
         content_length = int(self.headers.get("Content-Length", "0"))
+        request_body = {}
         if content_length > 0:
-            self.rfile.read(content_length)
+            request_body = json.loads(self.rfile.read(content_length))
 
         if self.server.get_state() == "fail":
             self._send_json(
@@ -47,23 +48,52 @@ class OpenAIMockRequestHandler(BaseHTTPRequestHandler):
             )
             return
 
+        response_text = self._get_response_text(request_body)
         self._send_json(
             200,
             {
-                "id": "chatcmpl-watchdog-mock",
-                "object": "chat.completion",
-                "created": int(time.time()),
-                "model": "gpt-4o-mini",
-                "choices": [
+                "id": "resp-openai-mock",
+                "object": "response",
+                "created_at": int(time.time()),
+                "model": request_body.get("model", "gpt-5.6-luna"),
+                "output": [
                     {
-                        "index": 0,
-                        "message": {"role": "assistant", "content": "pong"},
-                        "finish_reason": "stop",
+                        "id": "msg-openai-mock",
+                        "type": "message",
+                        "role": "assistant",
+                        "status": "completed",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": response_text,
+                                "annotations": [],
+                            }
+                        ],
                     }
                 ],
-                "usage": {"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                "parallel_tool_calls": True,
+                "tool_choice": "auto",
+                "tools": [],
+                "status": "completed",
             },
         )
+
+    def _get_response_text(self, request_body: dict) -> str:
+        if self.server.get_state() == "invalid":
+            return "not valid JSON"
+
+        response_format = request_body.get("text", {}).get("format", {})
+        if response_format.get("type") != "json_schema":
+            return "pong"
+
+        message_input = json.loads(request_body.get("input", "{}"))
+        target_message = message_input.get("target_message", "").lower()
+        is_spam = "[mock:spam]" in target_message
+        classification = {
+            "verdict": "spam" if is_spam else "not_spam",
+            "reason": "Mock spam marker detected." if is_spam else "No mock spam marker detected.",
+        }
+        return json.dumps(classification, ensure_ascii=False)
 
     def log_message(self, message_format: str, *args) -> None:
         logging.info("%s - %s", self.address_string(), message_format % args)
@@ -78,10 +108,10 @@ class OpenAIMockRequestHandler(BaseHTTPRequestHandler):
 
 
 def build_argument_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Toggleable OpenAI Chat Completions mock")
+    parser = argparse.ArgumentParser(description="Toggleable OpenAI Responses API mock")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8123)
-    parser.add_argument("--initial-state", choices=("ok", "fail"), default="fail")
+    parser.add_argument("--initial-state", choices=("ok", "fail", "invalid"), default="fail")
     return parser
 
 
@@ -92,12 +122,12 @@ def main() -> None:
     server_thread = threading.Thread(target=server.serve_forever, daemon=True)
     server_thread.start()
     print(f"OpenAI mock listening on http://{args.host}:{args.port}/v1 (state={server.get_state()})")
-    print("Commands: ok, fail, status, quit")
+    print("Commands: ok, fail, invalid, status, quit")
 
     try:
         while True:
             command = input("mock> ").strip().lower()
-            if command in {"ok", "fail"}:
+            if command in {"ok", "fail", "invalid"}:
                 server.set_state(command)
                 print(f"Mock state changed to {command}")
             elif command == "status":
@@ -105,7 +135,7 @@ def main() -> None:
             elif command in {"quit", "exit", "q"}:
                 return
             elif command:
-                print("Unknown command. Use: ok, fail, status, quit")
+                print("Unknown command. Use: ok, fail, invalid, status, quit")
     except (EOFError, KeyboardInterrupt):
         return
     finally:

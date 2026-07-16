@@ -4,6 +4,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
+from typing import TypeVar
 
 import httpx
 from openai import AsyncOpenAI
@@ -11,7 +12,15 @@ from telegram.ext import Application, CallbackContext, Job
 
 from src.handlers.ServiceNotificationsHandler import ServiceNotificationsHandler
 from src.handlers.spam_filters.openai.OpenAIConfig import OpenAIFilterConfig
+from src.handlers.spam_filters.openai.OpenAIModels import (
+    OpenAIMessageInput,
+    SPAM_CLASSIFICATION_SCHEMA,
+    SpamClassification,
+)
 from src.util.LoggerUtil import LoggerUtil
+
+
+ResultT = TypeVar("ResultT")
 
 
 class OpenAIIncidentStatus(StrEnum):
@@ -59,61 +68,55 @@ class OpenAIWatchdog:
             name="openai-availability-check",
         )
 
-    async def analyze_message(self, context: CallbackContext, message: str) -> str | None:
+    async def classify_message(
+            self,
+            context: CallbackContext,
+            message_input: OpenAIMessageInput,
+    ) -> SpamClassification | None:
         return await self._execute_monitored_request(
             context,
-            lambda: self._client.chat.completions.create(
+            lambda: self._client.responses.create(
                 model=self.config.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": self.config.get_prompt(),
-                            }
-                        ],
+                instructions=self.config.get_prompt(),
+                input=message_input.model_dump_json(),
+                reasoning={"effort": self.config.reasoning_effort},
+                text={
+                    "verbosity": self.config.text_verbosity,
+                    "format": {
+                        "type": "json_schema",
+                        "name": "spam_classification",
+                        "strict": True,
+                        "schema": SPAM_CLASSIFICATION_SCHEMA,
                     },
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": message,
-                            }
-                        ],
-                    },
-                ],
-                temperature=self.config.prompt_config.temperature,
-                max_tokens=self.config.prompt_config.max_tokens,
-                top_p=self.config.prompt_config.top_p,
-                frequency_penalty=self.config.prompt_config.frequency_penalty,
-                presence_penalty=self.config.prompt_config.presence_penalty,
-                response_format={"type": "text"},
+                },
             ),
+            self._parse_classification,
         )
 
     async def _check_availability(self, context: CallbackContext) -> None:
         await self._execute_monitored_request(
             context,
-            lambda: self._client.chat.completions.create(
+            lambda: self._client.responses.create(
                 model=self.config.model,
-                messages=[{"role": "user", "content": "Say pong."}],
-                temperature=0,
-                max_tokens=1,
+                input="Say pong.",
+                reasoning={"effort": "none"},
+                text={"verbosity": "low"},
+                max_output_tokens=16,
             ),
+            self._extract_answer,
         )
 
     async def _execute_monitored_request(
             self,
             context: CallbackContext,
             request: Callable[[], Awaitable],
-    ) -> str | None:
+            parse_response: Callable[[object], ResultT],
+    ) -> ResultT | None:
         try:
             if self._client is None:
                 raise OpenAIUnavailableError("OPENAI_API_KEY is not configured")
             response = await request()
-            answer = self._extract_answer(response)
+            answer = parse_response(response)
         except Exception as error:
             self.logger.error(f"OpenAI request failed: {type(error).__name__}: {error}")
             await self._record_failure(context, error)
@@ -180,12 +183,16 @@ class OpenAIWatchdog:
 
     @staticmethod
     def _extract_answer(response) -> str:
-        if response is None or len(response.choices) == 0:
+        if response is None:
             raise OpenAIUnavailableError("OpenAI returned an empty response")
-        answer = response.choices[0].message.content
-        if answer is None or answer.strip() == "":
+        answer = getattr(response, "output_text", None)
+        if not isinstance(answer, str) or answer.strip() == "":
             raise OpenAIUnavailableError("OpenAI returned a response without text")
         return answer
+
+    @classmethod
+    def _parse_classification(cls, response) -> SpamClassification:
+        return SpamClassification.model_validate_json(cls._extract_answer(response))
 
     def _format_error(self, error: Exception) -> str:
         error_text = f"{type(error).__name__}: {error}"

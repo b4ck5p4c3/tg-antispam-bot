@@ -46,23 +46,24 @@ class SpamFilter:
             return True
         sender_user = self.telegram_helper.extract_message_user(update.message)
         sender_user_id = None if sender_user is None else sender_user.id
-        conditions = [
-            (self.__is_message_type_not_supported(update.message),
-             f"Message {update.message.id} type is blacklisted, skipping spam check"),
-            (self.telegram_helper.is_message_from_anonymous_admin(update.message),
-             f"Message {update.message.id} was sent by an anonymous admin, skipping spam check"),
-            (sender_user_id is not None and self.state.is_user_trusted(sender_user_id),
-             f"User {sender_user_id} is trusted, skipping spam check"),
-            (not self.state.is_chat_moderated(update.message.chat_id),
-             f"Chat {update.message.chat_id} is not moderated, skipping spam check"),
-            (sender_user_id is not None and await self.state.is_admin(sender_user_id, update.effective_chat.id),
-             f"User {sender_user_id} is admin, skipping spam check"),
-        ]
 
-        for condition, message in conditions:
-            if condition:
-                self.logger.debug(f"{message}")
-                return True
+        if self.__is_message_type_not_supported(update.message):
+            self.logger.debug(f"Message {update.message.id} type is blacklisted, skipping spam check")
+            return True
+        if self.telegram_helper.is_message_from_anonymous_admin(update.message):
+            self.logger.debug(
+                f"Message {update.message.id} was sent by an anonymous admin, skipping spam check"
+            )
+            return True
+        if sender_user_id is not None and self.state.is_user_trusted(sender_user_id):
+            self.logger.debug(f"User {sender_user_id} is trusted, skipping spam check")
+            return True
+        if not self.state.is_chat_moderated(update.message.chat_id):
+            self.logger.debug(f"Chat {update.message.chat_id} is not moderated, skipping spam check")
+            return True
+        if sender_user_id is not None and await self.state.is_admin(sender_user_id, update.effective_chat.id):
+            self.logger.debug(f"User {sender_user_id} is admin, skipping spam check")
+            return True
         return False
 
     @staticmethod

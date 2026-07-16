@@ -3,16 +3,17 @@ from logging import Logger
 from typing import Optional
 
 from requests import JSONDecodeError
+from telegram import Chat, ChatPermissions, File, Message, PhotoSize, User
 from telegram.ext import CallbackContext
 
 from src.telegram.EnrichedUpdate import EnrichedUpdate
+from src.util.DevelopmentMode import get_development_delay_seconds, is_development_mode
 from src.util.data.BotState import BotState
-from telegram import Message, ChatPermissions, File, Chat, User, PhotoSize
-
 
 
 class TelegramHelper:
     __telegram_api_request_retry_count = 3
+    __development_unban_delay_seconds = 5
 
     def __init__(self, logger: Logger, state: BotState):
         self.logger = logger
@@ -82,6 +83,30 @@ class TelegramHelper:
     async def ban_chat_member(self, context: CallbackContext, chat_id: int, user_id: int) -> None:
         await self.__execute_telegram_api_request(context.bot.ban_chat_member, chat_id=chat_id, user_id=user_id)
         self.state.untrust(user_id)
+        if is_development_mode():
+            unban_delay_seconds = get_development_delay_seconds(
+                "DEVELOPMENT_UNBAN_DELAY_SECONDS",
+                self.__development_unban_delay_seconds,
+            )
+            self.logger.warning(
+                "Development mode: scheduling unban of user %s in chat %s after %s seconds",
+                user_id,
+                chat_id,
+                unban_delay_seconds,
+            )
+            context.job_queue.run_once(
+                lambda job_context: self.unban_chat_member(job_context, chat_id, user_id),
+                unban_delay_seconds,
+            )
+
+    async def unban_chat_member(self, context: CallbackContext, chat_id: int, user_id: int) -> None:
+        await self.__execute_telegram_api_request(
+            context.bot.unban_chat_member,
+            chat_id=chat_id,
+            user_id=user_id,
+            only_if_banned=True,
+        )
+        self.logger.info("Unbanned user %s in chat %s", user_id, chat_id)
 
     async def ban_chat_sender_chat(self, context: CallbackContext, chat_id: int, sender_chat_id: int) -> None:
         await self.__execute_telegram_api_request(context.bot.ban_chat_sender_chat, chat_id=chat_id,

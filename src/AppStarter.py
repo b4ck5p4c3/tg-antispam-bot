@@ -110,7 +110,11 @@ class BotBuilder:
             self.__get_locale_factory().get_default_locale(),
         )
         openai_watchdog = OpenAIWatchdog(openai_config, service_notifications_handler)
-        antispam_filters: SpamFilter = FilterFactory.get_default_chain(state, openai_config, openai_watchdog)
+        antispam_filters: SpamFilter = FilterFactory.get_default_chain(
+            state,
+            openai_config,
+            openai_watchdog,
+        )
 
         configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(state)
         manual_commands_handler: ManualModerationCommandsHandler = ManualModerationCommandsHandler(state)

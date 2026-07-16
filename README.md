@@ -45,6 +45,7 @@ logging by using the `/set_audit_log` command.
 
 - `--polling`: Use polling instead of webhooks
 - `--no-swynca`: Disable Swynca for admin list providing, use message chat admins instead
+- `--development`: Enable development-only moderation behavior, including delayed automatic unban
 
 ## Environment Variables
 
@@ -55,6 +56,9 @@ The following environment variables are used to configure the bot:
 - `OPENAI_BASE_URL`: Alternate OpenAI-compatible API URL (Optional, useful for local testing)
 - `OPENAI_PROXY_URL`: Proxy URL for OpenAI requests (Optional)
 - `OPENAI_WATCHDOG_INTERVAL_SECONDS`: OpenAI availability check interval (Optional, default: `3600`)
+- `DEVELOPMENT_MODE`: Enable development-only behavior without the `--development` flag (Optional, default: `false`)
+- `DEVELOPMENT_SPAM_BAN_DELAY_SECONDS`: Spam restriction-to-ban delay in development mode (Optional, default: `5`)
+- `DEVELOPMENT_UNBAN_DELAY_SECONDS`: Ban-to-unban delay in development mode (Optional, default: `5`)
 - `TELEGRAM_API_URL`: Base URL for Telegram API (Optional, default: 'https://api.telegram.org')
 - `WEBHOOK_PORT`: Port on which the webhook server will run (Optional, default: `8000`)
 - `DATA_FOLDER_PATH`: Path to the data files directory (Optional, default: `data`)
@@ -90,6 +94,11 @@ In `default` mode, the current prompt from `src/handlers/spam_filters/openai/Ope
 updates are applied when the container image is updated. Legacy configurations containing the prompt text directly in
 the `prompt` field are migrated to `custom` automatically on startup.
 
+The default classifier uses `gpt-5.6-luna` through the Responses API with strict Structured Outputs,
+`reasoning_effort: "low"`, and `text_verbosity: "low"`. The model receives the target message, OCR transcription,
+and replied-to message.
+Configurations still using the previous default model, `gpt-4o-mini`, are migrated to `gpt-5.6-luna` on startup.
+
 ## Healthcheck endpoint
 
 - `GET /api/health`
@@ -99,7 +108,9 @@ the `prompt` field are migrated to `custom` automatically on startup.
 
 ## Userbot debugger
 
-An interactive Telethon client for testing command flows and OpenAI service notifications is available in [`dev/userbot.py`](dev/userbot.py). See [`dev/README.md`](dev/README.md) for setup, interactive commands, automated subscription checks, and the watchdog outage/recovery scenario.
+An interactive Telethon client for testing command flows, OpenAI service notifications, and the full
+delete/restrict/ban/unban/rejoin antispam flow is available in [`dev/userbot.py`](dev/userbot.py). See
+[`dev/README.md`](dev/README.md) for setup and scenarios.
 
 ## Contribution
 
