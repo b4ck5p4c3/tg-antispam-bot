@@ -1,7 +1,4 @@
-import time
-from threading import Timer
-from typing import Dict, Optional
-from venv import logger
+from typing import Optional
 
 from telegram import Update, MessageOriginChannel, MessageOrigin, MessageOriginChat
 from telegram.ext import CallbackContext

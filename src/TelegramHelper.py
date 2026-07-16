@@ -35,14 +35,14 @@ class TelegramHelper:
         chat_id = message.chat_id
         sender_chat = self.extract_message_sender_chat(message)
         if sender_chat is not None:
-            self.logger.warning(f"Banning sender chat {sender_chat.id}")
+            self.logger.info(f"Banning sender chat {sender_chat.id}")
             await self.ban_chat_sender_chat(context, chat_id=chat_id, sender_chat_id=sender_chat.id)
             return
 
         user = self.extract_message_user(message)
         if user is None:
             raise ValueError(f"Cannot determine message author for message {message.message_id}")
-        self.logger.warning(f"Banning user {user.id}")
+        self.logger.info(f"Banning user {user.id}")
         await self.ban_chat_member(context, chat_id=chat_id, user_id=user.id)
 
     async def try_ban_and_delete_message(self, context: CallbackContext, message: Message) -> None:

@@ -1,7 +1,6 @@
 import time
 from threading import Timer
 from typing import Dict
-from venv import logger
 
 from telegram import MessageOriginChat, Update
 from telegram.ext import CallbackContext
@@ -42,7 +41,7 @@ class LolsSpamFilter(HTTPJsonSpamFilter):
 
     def is_spam(self, user_id: int) -> bool:
         if self.__is_in_cache(user_id):
-            logger.info(f"User {user_id} is in cache")
+            self.logger.info(f"User {user_id} is in cache")
             return True
         request_url = self.__LOLS_CHECK_API + str(user_id)
         account_status = self.try_send_request(request_url, [200])
@@ -80,7 +79,7 @@ class LolsSpamFilter(HTTPJsonSpamFilter):
         banned_ids = set([int(user_id) for user_id in banned_ids])
         updated_at = time.time()
         self.__CACHE_LIST_REQUESTS_BY_TIMESTAMP[updated_at] = banned_ids
-        logger.info(f"Cache updated at {updated_at} with {len(banned_ids)} banned ids")
+        self.logger.info(f"Cache updated at {updated_at} with {len(banned_ids)} banned ids")
 
     def __invalidate_outdated_cache(self):
         current_time = time.time()
