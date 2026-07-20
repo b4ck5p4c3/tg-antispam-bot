@@ -53,6 +53,8 @@ class SpamFilter:
 
         if self.__is_message_type_not_supported(update.message):
             return "message type is not supported"
+        if update.message.is_automatic_forward:
+            return "message is an automatic forward from a linked channel"
         if self.telegram_helper.is_message_from_anonymous_admin(update.message):
             return "message was sent by an anonymous admin"
         if sender_user_id is not None and self.state.is_user_trusted(sender_user_id):

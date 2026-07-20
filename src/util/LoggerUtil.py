@@ -14,6 +14,28 @@ class _TelegramApiStatusCheckLogFilter(logging.Filter):
         return self._JOB_NAME not in record.getMessage()
 
 
+class _TelegramWebhookAccessLogFilter(logging.Filter):
+    """Suppress successful Telegram webhook access logs from Uvicorn."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.name != "uvicorn.access":
+            return True
+
+        try:
+            _, method, path, _, status_code = record.args
+            return not (
+                method == "POST"
+                and path.split("?", maxsplit=1)[0] == "/telegram"
+                and status_code == 200
+            )
+        except (TypeError, ValueError, AttributeError):
+            message = record.getMessage()
+            return not (
+                '"POST /telegram HTTP/' in message
+                and (message.endswith(" 200") or message.endswith(" 200 OK"))
+            )
+
+
 class LoggerUtil:
     __LOGGER_LEVELS = {
         # Scheduler DEBUG messages such as "Looking for jobs to run" do not
@@ -40,12 +62,16 @@ class LoggerUtil:
     def __configure_log_filters() -> None:
         root_logger = logging.getLogger()
         for handler in root_logger.handlers:
-            if any(
-                isinstance(log_filter, _TelegramApiStatusCheckLogFilter)
-                for log_filter in handler.filters
+            for filter_type in (
+                _TelegramApiStatusCheckLogFilter,
+                _TelegramWebhookAccessLogFilter,
             ):
-                continue
-            handler.addFilter(_TelegramApiStatusCheckLogFilter())
+                if any(
+                    isinstance(log_filter, filter_type)
+                    for log_filter in handler.filters
+                ):
+                    continue
+                handler.addFilter(filter_type())
 
     @staticmethod
     def get_default_format(prefix: str) -> str:
