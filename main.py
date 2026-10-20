@@ -54,6 +54,8 @@ def main():
     logger.info("Starting webhook")
     try:
         asyncio.run(start_webhook(telegram_application, telegram_api_status_service))
+    except KeyboardInterrupt:
+        pass
     finally:
         telegram_api_status_service.stop()
 
@@ -63,8 +65,20 @@ async def start_webhook(telegram_application: Application, telegram_api_status_s
     webserver = get_webserver(PORT, WEBHOOK_HOST, telegram_api_status_service, telegram_application)
     async with telegram_application:
         await telegram_application.start()
-        await webserver.serve()
-        await telegram_application.stop()
+        try:
+            await webserver.serve()
+        finally:
+            await __stop_telegram_application(telegram_application)
+
+
+async def __stop_telegram_application(telegram_application: Application):
+    """Finish queued handlers and jobs even if SIGINT cancels the server task."""
+    stop_task = asyncio.create_task(telegram_application.stop())
+    try:
+        await asyncio.shield(stop_task)
+    except asyncio.CancelledError:
+        await stop_task
+        raise
 
 
 def __get_application(polling: bool) -> Application:

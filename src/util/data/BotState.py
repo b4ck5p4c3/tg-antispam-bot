@@ -108,6 +108,16 @@ class BotState(BaseModel):
         self.moderated_chat_ids.remove(chat_id)
         self.__state_repo.save(self)
 
+    def migrate_moderated_chat(self, old_id: int, new_id: int) -> None:
+        if old_id not in self.moderated_chat_ids:
+            return
+        self.moderated_chat_ids = list(dict.fromkeys(
+            new_id if chat_id == old_id else chat_id for chat_id in self.moderated_chat_ids
+        ))
+        histories = self.message_edit_histories.pop(old_id, {})
+        self.message_edit_histories.setdefault(new_id, {}).update(histories)
+        self.__state_repo.save(self)
+
     def set_audit_log_chat(self, chat_id: int):
         """
         Set chat as audit log chat.
@@ -279,10 +289,12 @@ class BotState(BaseModel):
         """
         return list(self.event_subscriber_id.get(event, []))
 
-    async def is_admin(self, user_id: int, chat_id: int) -> bool:
+    async def is_admin(self, user_id: int, chat_id: int, *, telegram_request=None) -> bool:
         """
         Check if user is admin.
         :param user_id: User id.
         :param chat_id: Chat id.
         """
+        if telegram_request is not None:
+            return await self.__admin_provider.is_admin_with_request(user_id, chat_id, telegram_request)
         return await self.__admin_provider.is_admin(user_id, chat_id)

@@ -1,3 +1,4 @@
+import asyncio
 import os
 import time
 from logging import Logger
@@ -22,20 +23,20 @@ class SwyncaAdminProvider(AdminProvider):
         else:
             swynca_api_key = token
         self.session = requests.Session()
+        self._cache_lock = asyncio.Lock()
         self.session.headers.update({'Cookie': f"session={swynca_api_key}",
                                      "accept": "application/json",
                                      "User-Agent": "Tg-antispam"}
                                     )
 
     async def is_admin(self, user_id: int, __unused: int) -> bool:
-        if self.__required_cache_update():
-            self.admins = self.__request_admins()
-            return user_id in self.admins
-        else:
+        async with self._cache_lock:
+            if self.__required_cache_update():
+                self.admins = await asyncio.to_thread(self.__request_admins)
             return user_id in self.admins
 
     def __request_admins(self) -> list[int]:
-        response = self.session.get(self.SWYNCA_API_URL + "api/members")
+        response = self.session.get(self.SWYNCA_API_URL + "api/members", timeout=15)
         if response.status_code != 200:
             self.logger.error("Swynca returned %d status code, body: %s", response.status_code, response.text)
             return []

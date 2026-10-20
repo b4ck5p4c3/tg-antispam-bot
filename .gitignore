@@ -4,15 +4,14 @@
 local.env
 data/state.json
 data/openai_config.json
+data/coroner_config.json
+data/coroner_state.json
 .env
 
 ignore/
 
 AGENTS.md
 
-dev/*.log
-dev/*.log.*
-dev/*.session*
-dev/userbot_config.json
+/dev/
 
 .codex

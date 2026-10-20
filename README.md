@@ -84,6 +84,121 @@ The user's current username is checked again before unbanning. Unbans use
 - `--no-swynca`: Disable Swynca for admin list providing, use message chat admins instead
 - `--development`: Enable development-only moderation behavior, including delayed automatic unban
 
+## Coroner: deleted accounts
+
+Coroner observes members of moderated groups, saves its roster and queue in JSON,
+and checks accounts periodically. It starts **stopped**, including after every process
+restart. Observation continues while stopped; `/abandon` disables it for that chat.
+Users who never appear in an update cannot be discovered retroactively with the Bot API.
+
+Administrator commands:
+
+- `/coroner`: Show module-wide statistics across all moderated chats, state, dry-run
+  mode, reference account, untracked percentage, grades, queue size/oldest wait,
+  removals in 30 days, and up to five recent errors. Available in a private chat with
+  the bot or a moderated group. The **Update** button refreshes the same global summary
+  by editing the message without clearing errors.
+- `/coroner ref <user ID>`: Save a live reference account and this chat as its lookup
+  context. This stops the module and requires a subsequent start.
+- `/coroner start`: Verify the reference and start checks in all moderated chats.
+- `/coroner stop`: Stop checks, preserving the roster and queue. An emergency error stays latched.
+- `/coroner run G1|G2|G3|G4|ALL`: Queue checks across all moderated chats for users in
+  the selected global grade. Requires a running module; also available in private chats.
+- `/coroner detectors`: Show rule settings, sample sufficiency, current values, trigger
+  progress, and historical minimum/maximum/mean; also available through **Detectors**.
+- `/coroner quarantine`: Browse quarantined accounts and profile links.
+- `/coroner review`: Review a persisted snapshot, select accounts, approve, reject or
+  request fresh checks. Also available from service notifications.
+- `/coroner acknowledge`: Release a safety incident after its quarantine is empty and
+  its detectors are no longer triggered. Removal budgets are preserved.
+
+Subcommands and grade names ignore case. All Coroner commands and Update require
+administrator access to **every** moderated chat, using the existing Swynca provider
+or Telegram administrators with `--no-swynca`. In private chats Telegram permissions
+are checked in those groups, never in the private conversation. `start` and `stop`
+are also available in private chats. Set `ref` inside a moderated group to supply its
+lookup context.
+The reference need only be known in its saved lookup chat; it need not belong to every group.
+
+Monitored users and grade counts deduplicate user IDs across chats. Removal statistics
+also count each user once during the last 30 days, using the grade recorded on their
+first removal in that window; individual chat removals remain in the history. The
+untracked percentage is `(total memberships - observed memberships) / total memberships`,
+using the sum of Telegram member counts, including bots, because the API cannot identify overlapping
+unobserved users. If any chat's count is unavailable or inconsistent, the aggregate
+percentage is unavailable rather than reporting a partial result.
+
+`<DATA_FOLDER_PATH>/coroner_config.json` is created automatically on first startup
+(default: `data/coroner_config.json`). No manual file creation is needed:
+
+```json
+{
+  "dry_run": false,
+  "max_requests_per_minute": 450,
+  "reference_check_every": 10,
+  "reference_user_id": null,
+  "reference_chat_id": null,
+  "retry_delay_seconds": 60,
+  "grades": [
+    {"name": "G1", "max_age_seconds": 86400, "check_interval_seconds": 1800},
+    {"name": "G2", "max_age_seconds": 604800, "check_interval_seconds": 7200},
+    {"name": "G3", "max_age_seconds": 2592000, "check_interval_seconds": 86400},
+    {"name": "G4", "max_age_seconds": null, "check_interval_seconds": 259200}
+  ]
+}
+```
+
+Edit settings while stopped, then use `/coroner start` to reload them. A configured,
+live reference is mandatory. Each user has **one global grade**, measured from their
+earliest known join or first observation in any moderated chat. Unknown join dates
+start at G1 from first observation; confirmed joins use their actual date. A later
+join to another chat, a leave/rejoin, or abandoning the first chat does not reset the
+global age. Existing per-chat records initialize the global age from the earliest
+saved date automatically. The same global grade controls the check interval in every
+chat and is recorded on removal. Thresholds and intervals are in seconds.
+The shared 450 RPM budget includes checks, reference lookups, UI and retries.
+
+An account is a removal candidate only when its returned first name is exactly `""`.
+Invisible characters remain nonempty. Candidates require confirmation via `getChat`,
+a configurable quarantine (**60 minutes** by default), a live reference check, and a
+final membership check. Removal kicks the current member
+without leaving a permanent ban; previously banned users and administrators are not removed.
+Telegram provides no atomic conditional kick: a ban made externally between the final
+membership check and the kick cannot be completely ruled out.
+
+The reference is checked before starting, after every configured number of ordinary
+checks, and before every intended removal, including dry runs. A reference detected as
+deleted sets `error`, emits a `CRITICAL` log, and blocks work until an explicit successful
+`/coroner start`. API errors do not imply deletion; unverifiable references block further work
+until verification succeeds. Restarting or changing the reference does not clear an emergency.
+
+With `dry_run: true`, the same checks and safeguards run, but removal only writes a
+`CORONER dry_run: would remove ...` log. Members remain in the roster, checks are rescheduled,
+and actual removal statistics stay unchanged. With `false` (the default), confirmed kicks
+are enabled only after explicitly starting the module.
+
+`coroner_state.json` stores the per-chat roster, global user ages and first-chat IDs,
+queue timestamps, control state and actual removal history. Both JSON files use
+atomic replacement. An interrupted kick whose
+outcome cannot be confirmed is not counted as successful. Status errors remain in memory
+only, retain at most five entries across the module with chat context, expire seven
+days after their last occurrence, and are lost on process restart;
+neither expiry nor Update clears the persisted emergency state.
+
+Coroner additionally blocks automatic removals on deletion-profile spikes, unusually
+many daily candidates, recently alive profiles becoming deleted, API failures,
+contradictory profiles, or a new message from a quarantined account. Rules with too few
+observations explicitly show **Check disabled: insufficient data**. Quarantine and
+safety incidents persist across restarts; normal checks continue during a safety block.
+Service subscribers with current administrator access to every moderated chat receive
+review notifications. Approval covers the snapshot's exact accounts and memberships;
+it cannot skip quarantine, fresh checks, or removal budgets. A subsequent incident
+invalidates earlier approval grants.
+
+The `protection` section is added to valid existing configurations automatically.
+See [Coroner protection configuration](docs/coroner-protection.md) for every setting,
+initial thresholds, historical statistics, and the review workflow.
+
 ## Environment Variables
 
 The following environment variables are used to configure the bot:
@@ -142,12 +257,6 @@ Configurations still using the previous default model, `gpt-4o-mini`, are migrat
 - Returns `200` with `{"telegram_api":"available"}` when Telegram Bot API is reachable.
 - Returns `500` with `{"telegram_api":"unavailable"}` when Telegram Bot API is unreachable.
 - Availability is checked in background every 10 seconds in both polling and webhook modes.
-
-## Userbot debugger
-
-An interactive Telethon client for testing command flows, OpenAI service notifications, and the full
-delete/restrict/ban/unban/rejoin antispam flow is available in [`dev/userbot.py`](dev/userbot.py). See
-[`dev/README.md`](dev/README.md) for setup and scenarios.
 
 ## Contribution
 

@@ -7,6 +7,7 @@ import getpass
 import json
 import logging
 import os
+import random
 import re
 import shlex
 import sys
@@ -22,13 +23,21 @@ from urllib.parse import parse_qs, urlparse
 from PIL import Image, ImageDraw, ImageFont
 
 try:
-    from telethon import TelegramClient, errors as telethon_errors, events, functions, utils
+    from telethon import (
+        TelegramClient,
+        errors as telethon_errors,
+        events,
+        functions,
+        types,
+        utils,
+    )
     from telethon.errors import RPCError
 except ModuleNotFoundError:
     TelegramClient = None
     telethon_errors = None
     events = None
     functions = None
+    types = None
     utils = None
     RPCError = Exception
 
@@ -37,6 +46,10 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = SCRIPT_DIR / "userbot_config.json"
 DEFAULT_SESSION_PATH = SCRIPT_DIR / "userbot"
 DEFAULT_LOG_PATH = SCRIPT_DIR / "userbot_debug.log"
+DEFAULT_MEMBERS_EXPORT_DIR = SCRIPT_DIR / "exports"
+MEMBERS_PAGE_SIZE = 200
+MEMBERS_REQUEST_DELAY_MIN = 15
+MEMBERS_REQUEST_DELAY_MAX = 30
 BOT_USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9_]{5,32}$")
 EVENT_BUFFER_SIZE = 500
 DEFAULT_ANTISPAM_TEST_RAW_CHAT_ID = 2353726867
@@ -66,6 +79,7 @@ class UserbotConfig:
             bot_username_override: str | None = None,
             target_chat_override: str | None = None,
             invite_link_override: str | None = None,
+            require_bot: bool = True,
     ) -> UserbotConfig:
         stored_config = cls._load_json(path)
         stored_bot_username = stored_config.get("bot_username")
@@ -94,11 +108,14 @@ class UserbotConfig:
         if not api_hash:
             raise ValueError("Telegram API hash cannot be empty")
 
-        if not bot_username:
+        if not bot_username and require_bot:
             bot_username = input("Bot username (for example, @my_antispam_bot): ").strip()
-        bot_username = cls._normalize_bot_username(bot_username)
+        if bot_username or require_bot:
+            bot_username = cls._normalize_bot_username(bot_username)
+        else:
+            bot_username = ""
         bot_changed = (
-            stored_bot_username is not None
+            bool(stored_bot_username)
             and cls._normalize_bot_username(stored_bot_username).lower() != bot_username.lower()
         )
         if bot_changed and explicit_target_chat is None:
@@ -106,7 +123,7 @@ class UserbotConfig:
             if str(target_chat).lower() in {stored_bot_target.lower(), stored_bot_target[1:].lower()}:
                 target_chat = f"@{bot_username}"
 
-        if target_chat is None:
+        if target_chat is None and require_bot:
             target_chat = input(
                 f"Test chat username or ID (Enter for {DEFAULT_ANTISPAM_TEST_CHAT_ID}): "
             ).strip()
@@ -278,7 +295,7 @@ class UserbotConsole:
                 should_exit = await self._execute_command(line)
                 if should_exit:
                     return
-            except (RPCError, ValueError) as error:
+            except (RPCError, ValueError, OSError) as error:
                 self.logger.exception("Command failed")
                 print(f"Command failed: {type(error).__name__}: {error}")
 
@@ -641,6 +658,8 @@ class UserbotConsole:
             self.set_invite_link(arguments)
         elif command == "dialogs":
             await self.print_dialogs(self._parse_optional_limit(arguments, 20))
+        elif command == "export-members":
+            await self.export_members(self._parse_group_chat_id(arguments))
         elif command == "history":
             await self.print_history(arguments)
         elif command == "watch":
@@ -734,6 +753,113 @@ class UserbotConsole:
         print("Recent dialogs:")
         async for dialog in self.client.iter_dialogs(limit=limit):
             print(f"  {utils.get_peer_id(dialog.entity):>14}  {dialog.name}")
+
+    async def export_members(self, chat_id: int) -> Path:
+        chat_id = self._parse_group_chat_id(str(chat_id))
+        try:
+            entity = await self.client.get_input_entity(chat_id)
+        except ValueError:
+            print(f"Looking for chat {chat_id} in the account's dialogs...")
+            entity = None
+            dialogs = self.client.iter_dialogs()
+            dialogs.wait_time = random.uniform(MEMBERS_REQUEST_DELAY_MIN, MEMBERS_REQUEST_DELAY_MAX)
+            async for dialog in dialogs:
+                if dialog.id == chat_id:
+                    entity = dialog.input_entity
+                    break
+                dialogs.wait_time = random.uniform(MEMBERS_REQUEST_DELAY_MIN, MEMBERS_REQUEST_DELAY_MAX)
+            if entity is None:
+                raise ValueError(f"Chat {chat_id} was not found in this account's dialogs")
+
+        is_channel = isinstance(entity, types.InputPeerChannel)
+        if not is_channel and not isinstance(entity, types.InputPeerChat):
+            raise ValueError("Member export requires a group chat ID")
+
+        DEFAULT_MEMBERS_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        output_path = DEFAULT_MEMBERS_EXPORT_DIR / f"{chat_id}_{timestamp}.txt"
+        seen_ids: set[int] = set()
+        offset = 0
+        total = 0
+        complete = False
+        print(f"Exporting member IDs from chat {chat_id} to {output_path}")
+
+        with output_path.open("x", encoding="utf-8") as output:
+            try:
+                while True:
+                    if is_channel:
+                        request = functions.channels.GetParticipantsRequest(
+                            channel=entity,
+                            filter=types.ChannelParticipantsSearch(""),
+                            offset=offset,
+                            limit=MEMBERS_PAGE_SIZE,
+                            hash=0,
+                        )
+                    else:
+                        request = functions.messages.GetFullChatRequest(entity.chat_id)
+                    result = await self._request_members(request)
+                    if is_channel:
+                        participants = result.participants
+                        total = result.count
+                    else:
+                        if not isinstance(result.full_chat.participants, types.ChatParticipants):
+                            raise ValueError("Telegram does not expose this group's member list")
+                        participants = result.full_chat.participants.participants
+                        total = len(participants)
+                    if not participants:
+                        break
+
+                    for participant in participants:
+                        if isinstance(participant, types.ChannelParticipantLeft):
+                            continue
+                        if isinstance(participant, types.ChannelParticipantBanned):
+                            if not isinstance(participant.peer, types.PeerUser):
+                                continue
+                            user_id = participant.peer.user_id
+                        else:
+                            user_id = participant.user_id
+                        if user_id in seen_ids:
+                            continue
+                        output.write(f"{',' if seen_ids else ''}{user_id}")
+                        seen_ids.add(user_id)
+                    output.flush()
+                    offset += len(participants)
+                    print(f"Saved {len(seen_ids)} unique member IDs (Telegram reports {total}).")
+                    if not is_channel or offset >= total:
+                        break
+                complete = True
+            finally:
+                if not complete:
+                    print(f"Export interrupted; {len(seen_ids)} IDs saved in {output_path}")
+
+        if len(seen_ids) < total:
+            print(
+                f"Telegram returned only {len(seen_ids)} of {total} reported members. "
+                "The member list may be restricted or may have changed during export."
+            )
+        self.logger.info("Exported %s member IDs from chat %s to %s", len(seen_ids), chat_id, output_path)
+        print(f"Export complete: {len(seen_ids)} member IDs saved in {output_path}")
+        return output_path
+
+    async def _request_members(self, request: Any) -> Any:
+        previous_threshold = self.client.flood_sleep_threshold
+        self.client.flood_sleep_threshold = 0
+        delay = random.uniform(MEMBERS_REQUEST_DELAY_MIN, MEMBERS_REQUEST_DELAY_MAX)
+        try:
+            while True:
+                print(f"Next member-list request in {delay:.1f} seconds...")
+                await asyncio.sleep(delay)
+                try:
+                    return await self.client(request)
+                except telethon_errors.FloodWaitError as error:
+                    delay = max(
+                        error.seconds + 1,
+                        random.uniform(MEMBERS_REQUEST_DELAY_MIN, MEMBERS_REQUEST_DELAY_MAX),
+                    )
+                    self.logger.warning("Member export FloodWait: waiting %.1f seconds", delay)
+                    print(f"Telegram requested a {error.seconds}-second wait.")
+        finally:
+            self.client.flood_sleep_threshold = previous_threshold
 
     async def print_history(self, arguments: str) -> None:
         parts = shlex.split(arguments)
@@ -867,6 +993,12 @@ class UserbotConsole:
                 return DEFAULT_ANTISPAM_TEST_CHAT_ID
             return entity_id
         return value
+
+    @staticmethod
+    def _parse_group_chat_id(value: str) -> int:
+        if not re.fullmatch(r"-[1-9]\d*", value):
+            raise ValueError("Group chat ID must be a negative integer, for example -1001234567890")
+        return int(value)
 
     @staticmethod
     def _parse_reply_arguments(value: str) -> tuple[int, str]:
@@ -1244,6 +1376,7 @@ Commands:
   target [username|ID]                Show or change the target chat
   invite [link]                       Show or set the target chat invite link
   dialogs [limit]                     List recent dialogs and their IDs
+  export-members <chat_id>            Export comma-separated member IDs to a dated file
   history [target|bot] [limit]        Show recent messages
   watch [seconds]                     Keep listening without accepting input
   raw on|off                          Toggle raw Telegram updates in the console
@@ -1282,11 +1415,18 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="Invite link used to rejoin the target after a development-mode unban",
     )
     parser.add_argument("--raw", action="store_true", help="Print raw Telegram updates")
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--scenario",
         choices=("interactive", "subscription", "watchdog", "antispam", "openai-types"),
         default="interactive",
         help="Run interactively or execute one scenario",
+    )
+    mode.add_argument(
+        "--export-members",
+        type=int,
+        metavar="CHAT_ID",
+        help="Export comma-separated member IDs from this group to dev/exports/<chat_id>_<date_time>.txt",
     )
     parser.add_argument(
         "--watchdog-timeout",
@@ -1326,6 +1466,7 @@ async def run(args: argparse.Namespace) -> None:
         bot_username_override=args.bot,
         target_chat_override=args.target,
         invite_link_override=args.invite_link,
+        require_bot=args.export_members is None,
     )
     if args.raw:
         config.raw_events = True
@@ -1335,6 +1476,9 @@ async def run(args: argparse.Namespace) -> None:
     await client.start()
     console = UserbotConsole(client, config, config_path, log_path)
     try:
+        if args.export_members is not None:
+            await console.export_members(args.export_members)
+            return
         await console.initialize()
         if args.scenario == "subscription":
             await console.run_subscription_scenario()
@@ -1356,6 +1500,8 @@ async def run(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = build_argument_parser()
     args = parser.parse_args()
+    if args.export_members is not None and args.export_members >= 0:
+        parser.error("--export-members requires a negative group chat ID, for example -1001234567890")
     if TelegramClient is None:
         parser.error("Telethon is not installed. Run: pip install -r dev/requirements.txt")
     if args.watchdog_timeout <= 0:

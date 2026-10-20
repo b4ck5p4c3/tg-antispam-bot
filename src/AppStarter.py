@@ -9,6 +9,8 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, A
 from src.handlers.ButtonClickHandler import ButtonClickHandler
 from src.handlers.CacheHandler import CacheHandler
 from src.handlers.ConfigurationCommandsHandler import ConfigurationCommandsHandler
+from src.handlers.CoronerCommandsHandler import CoronerCommandsHandler
+from src.coroner.CoronerService import CoronerService
 from src.handlers.ManualModerationCommandsHandler import ManualModerationCommandsHandler
 from src.handlers.ReportCommandsHandler import ReportCommandsHandler
 from src.handlers.ServiceNotificationsHandler import ServiceNotificationsHandler
@@ -123,7 +125,19 @@ class BotBuilder:
         unban_commands_handler = UnbanCommandsHandler(state)
         cache_handler: CacheHandler = CacheHandler(state)
         button_click_handler: ButtonClickHandler = ButtonClickHandler(state)
-        button_click_handler.set_listeners(report_commands_handler, unban_commands_handler)
+        coroner = CoronerService(
+            state, self.telegram_application.bot, self.__get_data_folder_path(),
+            self.__get_locale_factory().get_default_locale(),
+        )
+        coroner_commands = CoronerCommandsHandler(coroner)
+        button_click_handler.set_listeners(report_commands_handler, unban_commands_handler, coroner_commands)
+        self.telegram_application.bot_data["coroner"] = coroner
+        self.__add_command_handler("coroner", coroner_commands.handle_command, block=False)
+        self.telegram_application.add_handler(TypeHandler(Update, coroner.observe_update), group=-2)
+        self.telegram_application.add_handler(CallbackQueryHandler(
+            self.__with_enriched_update(button_click_handler.handle_button_click_and_route),
+            pattern=r"^CORONER(?:$|_UI:)", block=False,
+        ))
 
         self.__add_command_handler("moderate", configuration_commands_handler.handle_add_moderable_chat)
         self.__add_command_handler("abandon", configuration_commands_handler.handle_remove_moderable_chat)
@@ -150,10 +164,11 @@ class BotBuilder:
         self.telegram_application.add_handler(
             MessageHandler(filters.UpdateType.MESSAGES, self.__with_enriched_update(antispam_filters.apply)))
         openai_watchdog.start(self.telegram_application)
+        coroner.install(self.telegram_application)
 
-    def __add_command_handler(self, command: str, handler):
+    def __add_command_handler(self, command: str, handler, *, block: bool = True):
         self.telegram_application.add_handler(CommandHandler(
-            command, self.__with_enriched_update(handler), filters=filters.UpdateType.MESSAGE,
+            command, self.__with_enriched_update(handler), filters=filters.UpdateType.MESSAGE, block=block,
         ))
 
     def __get_state(self) -> BotState:

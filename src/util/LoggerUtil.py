@@ -2,16 +2,16 @@ import logging
 
 
 class _TelegramApiStatusCheckLogFilter(logging.Filter):
-    """Suppress routine APScheduler logs for the frequent Telegram API check."""
+    """Suppress routine logs for frequent health and Coroner jobs."""
 
-    _JOB_NAME = "telegram-api-status-check"
+    _JOB_NAMES = ("telegram-api-status-check", "coroner-worker", "coroner-maintenance")
 
     def filter(self, record: logging.LogRecord) -> bool:
         if not record.name.startswith("apscheduler."):
             return True
         if record.levelno >= logging.WARNING:
             return True
-        return self._JOB_NAME not in record.getMessage()
+        return not any(name in record.getMessage() for name in self._JOB_NAMES)
 
 
 class _TelegramWebhookAccessLogFilter(logging.Filter):

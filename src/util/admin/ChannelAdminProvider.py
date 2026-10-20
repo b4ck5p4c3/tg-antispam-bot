@@ -17,3 +17,7 @@ class ChannelAdminProvider(AdminProvider):
         if user_id in [admin.user.id for admin in chat_admins]:
             return True
         return False
+
+    async def is_admin_with_request(self, user_id: int, chat_id: int, telegram_request) -> bool:
+        chat_admins = await telegram_request(self.bot.get_chat_administrators, chat_id=chat_id)
+        return any(admin.user.id == user_id for admin in chat_admins)

@@ -1,5 +1,12 @@
 # Telethon userbot debugger
 
+Coroner's requirements and implementation decisions are described in
+[`coroner-spec.md`](coroner-spec.md). For manual verification, use an isolated group,
+set `dry_run: true` in `coroner_config.json`, configure `/coroner ref <live user ID>`,
+and explicitly `/coroner start`. Exercise mixed-case `run`, Update, stop/start,
+reference failure and restart recovery. Confirm `would remove` logs and zero real
+removals before trying actual kicks in the isolated group. Unit tests are not added.
+
 `userbot.py` logs in as a regular Telegram user, sends commands to the installed antispam bot, and traces the bot's new, edited, and deleted messages. It is intended for an isolated development chat.
 
 ## Setup
@@ -50,6 +57,7 @@ The following environment variables can supply or override the interactive confi
 - `target <username|ID>` changes the test chat.
 - `invite <link>` stores the invite link used to rejoin after a ban. Running `invite` without an argument only shows whether a link is configured.
 - `dialogs` and `history [target|bot] [limit]` help locate chats and inspect messages.
+- `export-members <chat_id>` exports the group's numeric member IDs as a comma-separated list.
 - `raw on|off` toggles raw Telegram updates in the terminal. Raw updates are always available in `dev/userbot_debug.log`.
 - `watch [seconds]` keeps the event listener running without accepting commands.
 
@@ -59,6 +67,33 @@ Run `help` in the interactive console for the complete list. The same scenarios 
 .venv/bin/python dev/userbot.py --scenario subscription
 .venv/bin/python dev/userbot.py --scenario watchdog --watchdog-timeout 180
 ```
+
+## Exporting group members
+
+Pass the group's numeric Telegram chat ID (including the `-100` prefix for a supergroup):
+
+```bash
+.venv/bin/python dev/userbot.py --export-members -1001234567890
+```
+
+Or run `export-members -1001234567890` in the interactive console. The specified chat is
+independent of the configured test target. Use `dialogs` to find chat IDs.
+
+The export is saved in `dev/exports/<chat_id>_YYYY-MM-DD_HH-MM-SS.txt`, using local time
+at the start of the export. For example: `-1001234567890_2026-10-20_19-30-00.txt`.
+The file contains unique numeric member IDs separated by commas, with no header:
+`123456789,987654321,555555555`. Accounts without usernames are included.
+
+The userbot fetches up to 200 members per request, waiting a newly randomized 15–30 seconds
+before each member-list request, including the first. If Telegram requests a longer
+`FloodWait`, that wait is respected before retrying the same page. Each page is flushed
+to disk, so already collected IDs remain in the file if the export is interrupted.
+Existing files are never overwritten.
+
+Standalone export reuses the Telegram credentials and session, skips antispam bot setup,
+and exits when finished. The account must have access to the group's member list.
+Telegram can restrict the visible participants; a short export prints a warning when
+fewer IDs are returned than Telegram's reported count.
 
 ## Testing antispam moderation
 
