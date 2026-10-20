@@ -2,7 +2,10 @@ import math
 import time
 from html import escape
 
+from pydantic import model_validator
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.error import BadRequest
 
 from src.coroner.CoronerMessages import coroner_text, duration, shorten
 from src.coroner.CoronerProtectionModels import MetricObservation
@@ -14,7 +17,14 @@ class CoronerProtectionKeyboardData(KeyboardData):
     action: str
     request_id: str = "-"
     page: int = 0
-    user_id: int = 0
+
+    @model_validator(mode="before")
+    @classmethod
+    def parse_from_string(cls, value):
+        # Navigation in messages sent before account selection was removed still works.
+        if isinstance(value, str) and len(value.split(cls.SEP)) == 5:
+            value = value.rsplit(cls.SEP, 1)[0]
+        return super().parse_from_string(value)
 
 
 class CoronerProtectionView:
@@ -22,39 +32,42 @@ class CoronerProtectionView:
         self.service = service
         self.protection = service.protection
         self.locale = locale
-        self.profile_ids = set()
 
     def t(self, key, **values):
         return coroner_text(self.locale, key, **values)
 
-    def button(self, key, action, request_id="-", page=0, user_id=0):
-        data = CoronerProtectionKeyboardData(action=action, request_id=request_id, page=page, user_id=user_id)
+    def button(self, key, action, request_id="-", page=0):
+        data = CoronerProtectionKeyboardData(action=action, request_id=request_id, page=page)
         return InlineKeyboardButton(self.t(key), callback_data=data.model_dump())
 
     def main_buttons(self):
         return [[self.button("detectors", "detectors"), self.button("quarantine_button", "quarantine")],
                 [self.button("reviews", "review")]]
 
-    def _profile_link(self, user_id):
-        self.profile_ids.add(user_id)
-        return (f'<a href="tg://user?id={user_id}">'
-                f'{escape(self.t("candidate_profile"))} · {user_id}</a>')
-
-    def missing_profile_links(self, message):
-        linked_ids = set()
-        urls = {f"tg://user?id={user_id}": user_id for user_id in self.profile_ids}
-        for entity in message.entities:
-            if entity.type == "text_mention" and entity.user is not None:
-                linked_ids.add(entity.user.id)
-            elif entity.type == "text_link" and entity.url in urls:
-                linked_ids.add(urls[entity.url])
-        return self.profile_ids - linked_ids
-
-    def replace_missing_profile_links(self, text, message):
-        for user_id in self.missing_profile_links(message):
-            unavailable = f'{escape(self.t("profile_link_unavailable"))} · <code>{user_id}</code>'
-            text = text.replace(self._profile_link(user_id), unavailable)
-        return text
+    async def display(self, action, request_id, page, chat_id, *, notice="", message_id=None):
+        text, keyboard = self.render(action, request_id, page)
+        if notice:
+            text = notice + "\n\n" + text
+        params = dict(chat_id=chat_id, text=text, reply_markup=keyboard,
+                      parse_mode=None, error_chat_id=chat_id)
+        method = self.service.bot.send_message if message_id is None else self.service.bot.edit_message_text
+        if message_id is not None:
+            params["message_id"] = message_id
+        try:
+            return await self.service.api.call(method, **params)
+        except BadRequest as error:
+            if "BUTTON_USER_PRIVACY_RESTRICTED" not in str(error).upper():
+                raise
+            # Telegram can reject ID links, particularly in private chats. Keep the
+            # review controls available and explain why account buttons are missing.
+            ids = [button.text for row in keyboard.inline_keyboard for button in row if button.url]
+            controls = [[button for button in row if not button.url] for row in keyboard.inline_keyboard]
+            params.update(
+                text=escape(text) + "\n\n" + escape(self.t("profile_buttons_unavailable")) + "\n" +
+                     ", ".join(f"<code>{escape(user_id)}</code>" for user_id in ids),
+                reply_markup=InlineKeyboardMarkup([row for row in controls if row]), parse_mode="HTML",
+            )
+            return await self.service.api.call(method, **params)
 
     def _navigation(self, action, request_id, page, pages):
         buttons = []
@@ -176,17 +189,36 @@ class CoronerProtectionView:
         text += "\n\n".join(cards[page * cfg.detector_page_size:(page + 1) * cfg.detector_page_size])
         buttons = self._navigation("detectors", "-", page, pages)
         buttons += [[self.button("update", "detectors", page=page), self.button("back", "status")]]
-        return shorten(text, 4000), InlineKeyboardMarkup(buttons), None
+        return shorten(text, 4000), InlineKeyboardMarkup(buttons)
 
-    def _review(self, request_id, actor_id, page=0):
+    def _account_page(self, lines, ids, page, controls):
+        # Reserve exactly the controls and navigation needed on each page.
+        pages, cursor = [], 0
+        while cursor < len(ids):
+            available = 100 - controls - bool(pages)
+            size = min(self.protection.config.account_links_per_page, available)
+            if len(ids) - cursor > size:
+                size = min(size, available - 1)
+            pages.append(ids[cursor:cursor + size])
+            cursor += size
+        pages = pages or [[]]
+        page = max(0, min(page, len(pages) - 1))
+        lines.append(self.t("page", page=page + 1, pages=len(pages)))
+        if not ids:
+            lines.append(self.t("no_candidates"))
+        buttons = [InlineKeyboardButton(str(user_id), url=f"tg://user?id={user_id}") for user_id in pages[page]]
+        columns = self.protection.config.account_links_per_row
+        rows = [buttons[index:index + columns] for index in range(0, len(buttons), columns)]
+        return "\n".join(lines), rows, page, len(pages)
+
+    def _review(self, request_id, page):
         state = self.protection.state
         request = state.requests.get(request_id)
-        lines = [self.t("review_heading"), self.t("protection_status", status=self.t(
-            "protection_blocked" if state.blocked else "protection_clear",
-        ))]
-        for signal in list(state.reasons.values())[-8:]:
-            lines.append(self.protection.reason_text(signal))
-        buttons = []
+        lines = [self.t("review_heading"), self.t("status", status=self.service.state.status),
+                 self.t("protection_status", status=self.t(
+                     "protection_blocked" if state.blocked else "protection_clear"))]
+        lines.extend(shorten(self.protection.reason_text(signal), 180)
+                     for signal in list(state.reasons.values())[-2:])
         if request is None:
             lines.append(self.t("review_none"))
         else:
@@ -195,123 +227,50 @@ class CoronerProtectionView:
                        age=duration(time.time() - request.created_at)),
                 self.t("review_counts", users=len(request.targets),
                        targets=sum(len(target.targets) for target in request.targets.values()),
-                       current=len(state.quarantine), selected=len(request.selections.get(actor_id, []))),
-                self.t("review_approval_lifetime", duration=duration(self.protection.config.approval_seconds)),
+                       current=len(state.quarantine)),
             ])
             grades = dict.fromkeys(("G1", "G2", "G3", "G4"), 0)
             chats = {}
-            for user, snapshot in request.targets.items():
-                candidate = state.quarantine.get(user)
+            for user_id, snapshot in request.targets.items():
+                candidate = state.quarantine.get(user_id)
                 grade = snapshot.grade or (candidate.grade if candidate else None)
                 if grade in grades:
                     grades[grade] += 1
                 for chat_id in snapshot.targets:
                     chats[chat_id] = chats.get(chat_id, 0) + 1
             lines.append(", ".join(f"{grade}: {count}" for grade, count in grades.items()))
-            size = self.protection.config.review_page_size
-            pages = max(1, math.ceil(len(chats) / size))
-            page = max(0, min(page, pages - 1))
-            lines.append(self.t("review_chat_distribution"))
-            lines.extend(f"{chat_id}: {count}" for chat_id, count in sorted(chats.items())[page * size:(page + 1) * size])
-            lines.append(self.t("page", page=page + 1, pages=pages))
-            buttons.extend(self._navigation("review", request_id, page, pages))
-            buttons.append([self.button("review_accounts", "accounts", request.id)])
-            if request.state == "pending" and request.epoch == state.epoch:
-                buttons.extend([
-                    [self.button("approve_selected", "approve", request.id),
-                     self.button("approve_all", "approve_all", request.id)],
-                    [self.button("reject_all", "reject", request.id), self.button("recheck", "recheck", request.id)],
-                ])
+            lines.append(self.t("review_chat_distribution") + " " + shorten(
+                ", ".join(f"{chat_id}: {count}" for chat_id, count in sorted(chats.items())), 300))
+        ids = sorted(request.targets) if request is not None else []
+        can_approve = (request is not None and request.targets and request.state == "pending"
+                       and request.epoch == state.epoch)
+        text, buttons, page, pages = self._account_page(lines, ids, page, 4 + bool(can_approve))
+        buttons += self._navigation("review", request_id, page, pages)
+        if can_approve:
+            buttons.append([self.button("approve_all", "approve_all", request.id)])
         buttons.extend([
-            [self.button("review_new" if state.blocked else "pause_review", "new"),
-             self.button("review_resume", "ack")],
-            [self.button("update", "review", request_id), self.button("back", "status")],
+            [self.button("stop_module", "stop"),
+             self.button("review_new" if state.blocked else "pause_review", "new")],
+            [self.button("update", "review", request_id, page), self.button("back", "status")],
         ])
-        return shorten("\n".join(lines), 4000), InlineKeyboardMarkup(buttons), None
+        return text, InlineKeyboardMarkup(buttons)
 
-    def _accounts(self, request_id, actor_id, page, *, quarantine=False):
-        state = self.protection.state
-        request = state.requests.get(request_id)
-        ids = sorted(state.quarantine) if quarantine else sorted(request.targets) if request else []
-        size = self.protection.config.review_page_size
-        pages = max(1, math.ceil(len(ids) / size))
-        page = max(0, min(page, pages - 1))
-        heading = (self.t("quarantine_count", count=len(ids)) if quarantine else
-                   f'{self.t("review_accounts")}: {len(ids)}')
-        lines = [escape(heading),
-                 self.t("page", page=page + 1, pages=pages)]
-        buttons = []
-        for user in ids[page * size:(page + 1) * size]:
-            candidate = state.quarantine.get(user)
-            if not quarantine and candidate is not None and request.targets[user].candidate_id != candidate.id:
-                candidate = None
-            selected = request is not None and user in request.selections.get(actor_id, [])
-            lines.append(self._profile_link(user) + "\n" + escape(
-                self.t("candidate_line", grade=self.service._user_grade(user, time.time()).name,
-                       detected_grade=candidate.grade, age=duration(time.time() - candidate.detected_at),
-                       remaining=duration(candidate.ready_at - time.time()), targets=len(candidate.targets))
-                if candidate is not None else self.t("candidate_gone")))
-            if (request is not None and user in request.targets and request.state == "pending"
-                    and request.epoch == state.epoch
-                    and candidate is not None and request.targets[user].candidate_id == candidate.id):
-                buttons.append([InlineKeyboardButton(
-                    f'{self.t("selected" if selected else "select")} {user}',
-                    callback_data=CoronerProtectionKeyboardData(
-                        action="qselect" if quarantine else "select",
-                        request_id=request_id, page=page, user_id=user,
-                    ).model_dump(),
-                )])
-        if not ids:
-            lines.append(escape(self.t("no_candidates")))
-        action = "quarantine" if quarantine else "accounts"
-        buttons += self._navigation(action, request_id, page, pages)
-        buttons += [[self.button("update", action, request_id, page), self.button("reviews", "review", request_id)],
-                    [self.button("back", "status")]]
-        return "\n\n".join(lines), InlineKeyboardMarkup(buttons), "HTML"
+    def _quarantine(self, page):
+        ids = sorted(self.protection.state.quarantine)
+        text, buttons, page, pages = self._account_page(
+            [self.t("quarantine_count", count=len(ids))], ids, page, 4)
+        buttons += self._navigation("quarantine", "-", page, pages)
+        buttons.extend([
+            [self.button("update", "quarantine", page=page), self.button("reviews", "review")],
+            [self.button("stop_module", "stop"), self.button("back", "status")],
+        ])
+        return text, InlineKeyboardMarkup(buttons)
 
-    def _detail(self, request_id, actor_id, page, user_id):
-        candidate = self.protection.state.quarantine.get(user_id)
-        request = self.protection.state.requests.get(request_id)
-        if (request is not None and user_id in request.targets and candidate is not None
-                and request.targets[user_id].candidate_id != candidate.id):
-            candidate = None
-        lines = [self._profile_link(user_id)]
-        if candidate is None:
-            lines.append(escape(self.t("candidate_gone")))
-        else:
-            lines.append(escape(self.t("candidate_line", grade=self.service._user_grade(user_id, time.time()).name,
-                                       detected_grade=candidate.grade,
-                                       age=duration(time.time() - candidate.detected_at),
-                                       remaining=duration(candidate.ready_at - time.time()), targets=len(candidate.targets))))
-            targets = sorted(candidate.targets)
-            size = self.protection.config.review_page_size
-            target_pages = max(1, math.ceil(len(targets) / size))
-            detail_page = max(0, min(page, target_pages - 1))
-            lines.append(escape(self.t("candidate_targets")))
-            lines.extend(str(chat) for chat in targets[detail_page * size:(detail_page + 1) * size])
-            lines.append(self.t("page", page=detail_page + 1, pages=target_pages))
-        buttons = []
-        if candidate is not None:
-            nav = []
-            if detail_page:
-                nav.append(self.button("previous", "detail", request_id, detail_page - 1, user_id))
-            if detail_page + 1 < target_pages:
-                nav.append(self.button("next", "detail", request_id, detail_page + 1, user_id))
-            if nav:
-                buttons.append(nav)
-        if request is not None and user_id in request.targets and request.state == "pending" and candidate is not None:
-            selected = user_id in request.selections.get(actor_id, [])
-            buttons.append([self.button("selected" if selected else "select", "select", request_id, 0, user_id)])
-        buttons += [[self.button("back", "accounts" if request else "quarantine", request_id)]]
-        return "\n\n".join(lines), InlineKeyboardMarkup(buttons), "HTML"
-
-    def render(self, action, request_id, actor_id, page, user_id):
+    def render(self, action, request_id="-", page=0):
         if request_id == "-":
             request_id = self.protection.state.current_request_id or "-"
         if action == "detectors":
             return self._detectors(page)
-        if action in ("accounts", "quarantine"):
-            return self._accounts(request_id, actor_id, page, quarantine=action == "quarantine")
-        if action == "detail":
-            return self._detail(request_id, actor_id, page, user_id)
-        return self._review(request_id, actor_id, page)
+        if action == "quarantine":
+            return self._quarantine(page)
+        return self._review(request_id, page)

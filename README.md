@@ -110,11 +110,11 @@ Administrator commands:
   the selected global grade. Requires a running module; also available in private chats.
 - `/coroner detectors`: Show rule settings, sample sufficiency, current values, trigger
   progress, and historical minimum/maximum/mean; also available through **Detectors**.
-- `/coroner quarantine`: Browse quarantined accounts with grades, remaining quarantine
-  time and direct **Open profile** links on the same page. If Telegram removes a profile
-  link, it is labelled **Profile link unavailable**, with the ID formatted for copying.
-- `/coroner review`: Review a persisted snapshot, select accounts, approve, reject or
-  request fresh checks. Also available from service notifications.
+- `/coroner quarantine`: Browse compact pages of account URL buttons that open accounts
+  directly. Pages fill a 100-button budget including navigation and controls. Telegram
+  privacy restrictions are reported explicitly, with copyable IDs as a fallback.
+- `/coroner review`: Show snapshot statistics and accounts together. Confirm the whole
+  snapshot or stop Coroner if detection is wrong. Also available from service notifications.
 - `/coroner acknowledge`: Release a safety incident after its quarantine is empty and
   its detectors are no longer triggered. Removal budgets are preserved.
 

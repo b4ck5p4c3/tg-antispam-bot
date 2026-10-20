@@ -119,11 +119,10 @@ class CoronerProtection:
         self.changed()
         self.evaluate(now)
 
-    def cancel_candidate(self, user_id, now=None, *, confirmed_alive=True):
+    def cancel_candidate(self, user_id, now=None):
         if self.state.quarantine.pop(user_id, None) is not None:
             now = time.time() if now is None else now
-            if confirmed_alive:
-                self.state.cancelled_candidates.append((now, user_id))
+            self.state.cancelled_candidates.append((now, user_id))
             self.state.rejected_until[user_id] = now + self.config.rejection_cooldown_seconds
             self.changed()
 
@@ -238,56 +237,35 @@ class CoronerProtection:
         self.changed()
         return request
 
-    def review(self, request_id, user_id, action, target_user_id=0):
+    def approve_request(self, request_id, user_id):
         request = self.state.requests.get(request_id)
         if request is None or request.epoch != self.state.epoch or request.state != "pending":
             return "review_stale"
         now = time.time()
-        if action == "select":
-            if target_user_id not in request.targets:
-                return "review_stale"
-            selected = request.selections.setdefault(user_id, [])
-            if target_user_id in selected:
-                selected.remove(target_user_id)
-            else:
-                selected.append(target_user_id)
-            self.changed()
-            return "review_selected"
-        selected = request.selections.get(user_id, [])
-        targets = selected if action == "approve" else list(request.targets)
-        if action == "approve_all":
-            targets = list(request.targets)
-        if action in ("approve", "approve_all") and not targets:
-            return "review_empty_selection"
-        if action not in ("approve", "approve_all", "reject", "recheck"):
-            return "review_stale"
-        for target in targets:
-            snapshot = request.targets[target]
+        if not request.targets:
+            return "review_no_accounts"
+        for target, snapshot in request.targets.items():
             candidate = self.state.quarantine.get(target)
             if candidate is None or candidate.id != snapshot.candidate_id:
                 continue
-            if action == "reject":
-                self.cancel_candidate(target, now, confirmed_alive=False)
-            else:
-                if action != "recheck":
-                    candidate.approved_targets = {
-                        chat: generation for chat, generation in snapshot.targets.items()
-                        if candidate.targets.get(chat) == generation
-                    }
-                    candidate.approval_epoch = self.state.epoch
-                    candidate.approval_expires_at = now + self.config.approval_seconds
-                for chat_id in snapshot.targets:
-                    row = self.service.state.participants.get(chat_id, {}).get(target)
-                    if row is None or not row.active or not self.service.bot_state.is_chat_moderated(chat_id):
-                        continue
-                    self.service._enqueue(chat_id, target, row, "manual")
-                    self.service.state.queue[f"{chat_id}:{target}"].not_before = 0
-        if action != "recheck":
-            request.state = "rejected" if action == "reject" else "approved"
-            request.decided_at, request.decided_by = now, user_id
+            candidate.approved_targets = {
+                chat: generation for chat, generation in snapshot.targets.items()
+                if candidate.targets.get(chat) == generation
+            }
+            candidate.approval_epoch = self.state.epoch
+            candidate.approval_expires_at = now + self.config.approval_seconds
+            for chat_id, generation in snapshot.targets.items():
+                row = self.service.state.participants.get(chat_id, {}).get(target)
+                if (row is None or not row.active or row.generation != generation
+                        or not self.service.bot_state.is_chat_moderated(chat_id)):
+                    continue
+                self.service._enqueue(chat_id, target, row, "manual")
+                self.service.state.queue[f"{chat_id}:{target}"].not_before = 0
+        request.state = "approved"
+        request.decided_at, request.decided_by = now, user_id
         self.changed()
-        self.service.logger.info("CORONER review %s action=%s by=%s users=%s", request_id, action, user_id, targets)
-        return "review_" + ("rechecking" if action == "recheck" else "decided")
+        self.service.logger.info("CORONER review %s approved by=%s users=%s", request_id, user_id, list(request.targets))
+        return "review_decided"
 
     def acknowledge(self):
         self.evaluate()
@@ -579,16 +557,10 @@ class CoronerProtection:
                 # A new anomaly may supersede the snapshot while authorization is awaited.
                 if self.state.current_request_id != request_id:
                     return
-                text, keyboard, parse_mode = view.render("review", request_id, subscriber, 0, 0)
-                params = dict(chat_id=subscriber, text=text, reply_markup=keyboard,
-                              parse_mode=parse_mode, error_chat_id=subscriber)
                 message_id = request.notifications.get(subscriber)
-                if message_id is None:
-                    message = await self.service.api.call(self.service.bot.send_message, **params)
+                message = await view.display("review", request_id, 0, subscriber, message_id=message_id)
+                if message_id is None and message is not None:
                     request.notifications[subscriber] = message.message_id
-                else:
-                    await self.service.api.call(self.service.bot.edit_message_text,
-                                                message_id=message_id, **params)
                 self.changed()
                 await self.service.save()
             except CoronerInterrupted:

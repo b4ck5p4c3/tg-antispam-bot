@@ -61,7 +61,8 @@ class ProtectionConfig(ProtectionModel):
     removal_statistics_days: int = Field(default=7, gt=0, le=365, strict=True)
     notification_interval_seconds: int = Field(default=300, gt=0, strict=True)
     member_count_cache_seconds: int = Field(default=60, gt=0, strict=True)
-    review_page_size: int = Field(default=5, gt=0, le=8, strict=True)
+    account_links_per_page: int = Field(default=100, gt=0, le=100, strict=True)
+    account_links_per_row: int = Field(default=3, gt=0, le=8, strict=True)
     detector_page_size: int = Field(default=3, gt=0, le=3, strict=True)
     resolved_request_retention_days: int = Field(default=30, gt=0, le=365, strict=True)
     reservation_retention_days: int = Field(default=30, gt=0, le=365, strict=True)
@@ -75,9 +76,9 @@ class ProtectionConfig(ProtectionModel):
     @model_validator(mode="before")
     @classmethod
     def discard_removed_settings(cls, values):
-        # Accept configurations saved before the API failure detector was removed.
-        if isinstance(values, dict) and "api_errors" in values:
-            return {key: value for key, value in values.items() if key != "api_errors"}
+        # Retire the removed API detector and the old account-card page size.
+        if isinstance(values, dict):
+            return {key: value for key, value in values.items() if key not in ("api_errors", "review_page_size")}
         return values
 
     @model_validator(mode="after")
@@ -187,7 +188,6 @@ class ReviewRequest(BaseModel):
     created_at: float
     epoch: int
     targets: dict[int, ReviewTarget] = Field(default_factory=dict)
-    selections: dict[int, list[int]] = Field(default_factory=dict)
     state: Literal["pending", "approved", "rejected", "superseded"] = "pending"
     decided_by: int | None = None
     decided_at: float | None = None

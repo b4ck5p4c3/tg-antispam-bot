@@ -1,7 +1,6 @@
-from html import escape
 import time
 
-from telegram import Chat, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from telegram import Chat, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
 from telegram.ext import CallbackContext
 
@@ -30,7 +29,7 @@ class CoronerCommandsHandler:
         rows.extend(CoronerProtectionView(self.service, locale).main_buttons())
         return InlineKeyboardMarkup(rows)
 
-    async def _protection_display(self, update, action, request_id="-", page=0, user_id=0,
+    async def _protection_display(self, update, action, request_id="-", page=0,
                                   notice="", *, edit=False):
         if action == "detectors":
             try:
@@ -40,28 +39,10 @@ class CoronerCommandsHandler:
             except Exception:
                 pass
         view = CoronerProtectionView(self.service, update.locale)
-        text, keyboard, parse_mode = view.render(action, request_id, update.effective_user.id, page, user_id)
-        if notice:
-            text = (escape(notice) if parse_mode == "HTML" else notice) + "\n\n" + text
-        params = dict(chat_id=update.effective_chat.id, text=text, reply_markup=keyboard,
-                      parse_mode=parse_mode, error_chat_id=update.effective_chat.id)
-        if edit:
-            message = await self.service.api.call(
-                self.service.bot.edit_message_text,
-                message_id=update.callback_query.message.message_id, **params,
-            )
-            if message is None:
-                message = update.callback_query.message
-        else:
-            message = await self.service.api.call(self.service.bot.send_message, **params)
-        if isinstance(message, Message):
-            corrected = view.replace_missing_profile_links(text, message)
-            if corrected != text:
-                params["text"] = corrected
-                await self.service.api.call(
-                    self.service.bot.edit_message_text,
-                    message_id=message.message_id, **params,
-                )
+        await view.display(
+            action, request_id, page, update.effective_chat.id, notice=notice,
+            message_id=update.callback_query.message.message_id if edit else None,
+        )
 
     async def _reply(self, update, text):
         chat_id = update.effective_chat.id
@@ -197,20 +178,24 @@ class CoronerCommandsHandler:
                 else:
                     request_id = self.service.protection.new_request().id
                 action = "review"
+            elif action == "stop":
+                await self.service.stop()
+                notice = coroner_text(update.locale, (
+                    "error_stopped" if self.service.state.status == "error" else "stopped"
+                ))
+                action = "review"
             elif action == "ack":
                 notice = coroner_text(update.locale, self.service.protection.acknowledge())
                 action = "review"
-            elif action in ("select", "qselect", "approve", "approve_all", "reject", "recheck"):
-                review_action = "select" if action == "qselect" else action
-                result = self.service.protection.review(
-                    request_id, update.effective_user.id, review_action, data.user_id,
-                )
+            elif action == "approve_all":
+                result = self.service.protection.approve_request(request_id, update.effective_user.id)
                 notice = coroner_text(update.locale, result)
-                action = {"qselect": "quarantine", "select": "accounts"}.get(action, "review")
-            elif action not in ("review", "accounts", "quarantine", "detectors", "detail"):
-                return
+                action = "review"
+            elif action not in ("review", "quarantine", "detectors"):
+                notice = coroner_text(update.locale, "review_stale")
+                action = "review"
             await self.service.save(force=True)
-            await self._protection_display(update, action, request_id, data.page, data.user_id, notice, edit=True)
+            await self._protection_display(update, action, request_id, data.page, notice, edit=True)
         except (TelegramError, CoronerInterrupted):
             pass
         except Exception as error:

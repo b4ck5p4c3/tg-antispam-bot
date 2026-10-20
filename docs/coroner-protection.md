@@ -3,12 +3,12 @@
 Coroner has one reference account. Confirmed deletion candidates enter a persisted,
 user-wide quarantine before any removal. The default delay is 60 minutes. A candidate
 stores membership generations for every target chat, so approval cannot silently apply
-to a later rejoin or another chat. Where Telegram permits a profile mention, links use
-`tg://user?id=...`. Telegram can omit these mentions for inaccessible or deleted accounts,
-particularly in private conversations with the bot. The bot checks returned message
-entities and replaces omitted links with **Profile link unavailable** and a numeric ID
-formatted for copying. It cannot guarantee that a client can open every deleted profile;
-see [Telegram's linking restrictions](https://core.telegram.org/bots/api#formatting-options).
+to a later rejoin or another chat. Accounts are shown as inline URL buttons using
+`tg://user?id=...`; tapping one opens that account directly, without an intermediate
+bot card or selection step. Telegram can reject these buttons because of account privacy
+restrictions, especially in private chats. In that case the bot explicitly explains the
+restriction and shows copyable IDs while keeping the review and stop controls available.
+See [Telegram's linking restrictions](https://core.telegram.org/bots/api#inlinekeyboardbutton).
 
 ## Rules and initial thresholds
 
@@ -58,24 +58,25 @@ rights in every moderated chat. The module edits its existing review notificatio
 configured interval. Every notification, authorization lookup and UI operation shares
 Coroner's Telegram RPM budget. Failed notification delivery does not release protection.
 
-`/coroner review` and the notification buttons expose a snapshot with exact candidate
-IDs and target membership generations. Account lists and target chats have pagination;
-selections belong to the administrator who made them. Approve selected accounts or the
-whole snapshot, reject the snapshot, or request fresh checks. Rechecks grant no approval.
-Quarantine and snapshot lists show **Open profile** links, numeric IDs, grades and
-quarantine deadlines together on each page. Open a profile directly from the list;
-no intermediate account card is required. Profile links appear in the message text
-instead of URL buttons, which Telegram can reject for privacy restrictions. Links that
-Telegram removes are explicitly labelled unavailable. Selecting
-an account keeps the current list and page open. The page size uses `review_page_size`.
+`/coroner review` and service notifications show snapshot statistics and account buttons
+together. Quarantine pages show only the count, page number and account buttons. IDs are
+button labels, arranged in three columns by default. Each page fills the configured
+100-button budget after reserving its own controls and Previous/Next buttons. Settings
+`account_links_per_page` and `account_links_per_row` control density; the old card-based
+`review_page_size` setting is retired automatically.
+There are two decisions: **Confirm all accounts** approves the entire snapshot;
+**Stop Coroner** stops all profile checks and removals until a manual start. Review is
+for deciding whether detection is working correctly. There is no account selection,
+partial approval, rejection or per-account decision. Old selection callbacks cannot
+approve anything, and stored selections are ignored when loading older JSON state.
 A new snapshot supersedes a pending one. New candidates or new memberships do not gain
 permission from an earlier snapshot. A fresh incident invalidates previous grants.
 Approval expires after the configured lifetime and never shortens the quarantine delay.
 Outside an incident, **Pause removals and review** explicitly latches the removal gate
 before creating a manual snapshot. Merely browsing the quarantine does not pause it.
 
-If some accounts remain after a decision, create a new snapshot to review them. Rejected
-or freshly alive candidates return to ordinary monitoring with a configurable cooldown
+If accounts were added after a decision, create a new snapshot to review them. Candidates
+confirmed alive return to ordinary monitoring with a configurable cooldown
 against immediate recreation. After quarantine is empty and current detector conditions
 have cleared, `/coroner acknowledge` explicitly releases the safety incident. Start,
 stop, reference changes, expiry of temporary errors and process restarts never release it.
@@ -207,7 +208,8 @@ when those records were created; duration changes apply to new records.
     "removal_statistics_days": 7,
     "notification_interval_seconds": 300,
     "member_count_cache_seconds": 60,
-    "review_page_size": 5,
+    "account_links_per_page": 100,
+    "account_links_per_row": 3,
     "detector_page_size": 3,
     "resolved_request_retention_days": 30,
     "reservation_retention_days": 30,
