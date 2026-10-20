@@ -58,6 +58,11 @@ Coroner's Telegram RPM budget. Failed notification delivery does not release pro
 IDs and target membership generations. Account lists and target chats have pagination;
 selections belong to the administrator who made them. Approve selected accounts or the
 whole snapshot, reject the snapshot, or request fresh checks. Rechecks grant no approval.
+Quarantine and snapshot lists show **Open profile** links, numeric IDs, grades and
+quarantine deadlines together on each page. Open a profile directly from the list;
+no intermediate account card is required. Profile links appear in the message text
+instead of URL buttons, which Telegram can reject for privacy restrictions. Selecting
+an account keeps the current list and page open. The page size uses `review_page_size`.
 A new snapshot supersedes a pending one. New candidates or new memberships do not gain
 permission from an earlier snapshot. A fresh incident invalidates previous grants.
 Approval expires after the configured lifetime and never shortens the quarantine delay.

@@ -34,6 +34,10 @@ class CoronerProtectionView:
         return [[self.button("detectors", "detectors"), self.button("quarantine_button", "quarantine")],
                 [self.button("reviews", "review")]]
 
+    def _profile_link(self, user_id):
+        return (f'<a href="tg://user?id={user_id}">'
+                f'{escape(self.t("candidate_profile"))} · {user_id}</a>')
+
     def _navigation(self, action, request_id, page, pages):
         buttons = []
         if page:
@@ -214,7 +218,9 @@ class CoronerProtectionView:
         size = self.protection.config.review_page_size
         pages = max(1, math.ceil(len(ids) / size))
         page = max(0, min(page, pages - 1))
-        lines = [escape(self.t("quarantine_button" if quarantine else "review_accounts")),
+        heading = (self.t("quarantine_count", count=len(ids)) if quarantine else
+                   f'{self.t("review_accounts")}: {len(ids)}')
+        lines = [escape(heading),
                  self.t("page", page=page + 1, pages=pages)]
         buttons = []
         for user in ids[page * size:(page + 1) * size]:
@@ -222,18 +228,21 @@ class CoronerProtectionView:
             if not quarantine and candidate is not None and request.targets[user].candidate_id != candidate.id:
                 candidate = None
             selected = request is not None and user in request.selections.get(actor_id, [])
-            lines.append(f'<a href="tg://user?id={user}">{user}</a> ' + escape(
+            lines.append(self._profile_link(user) + "\n" + escape(
                 self.t("candidate_line", grade=self.service._user_grade(user, time.time()).name,
                        detected_grade=candidate.grade, age=duration(time.time() - candidate.detected_at),
                        remaining=duration(candidate.ready_at - time.time()), targets=len(candidate.targets))
                 if candidate is not None else self.t("candidate_gone")))
-            row = [InlineKeyboardButton(str(user), callback_data=CoronerProtectionKeyboardData(
-                action="detail", request_id=request_id, page=page, user_id=user,
-            ).model_dump())]
             if (request is not None and user in request.targets and request.state == "pending"
+                    and request.epoch == state.epoch
                     and candidate is not None and request.targets[user].candidate_id == candidate.id):
-                row.append(self.button("selected" if selected else "select", "select", request_id, page, user))
-            buttons.append(row)
+                buttons.append([InlineKeyboardButton(
+                    f'{self.t("selected" if selected else "select")} {user}',
+                    callback_data=CoronerProtectionKeyboardData(
+                        action="qselect" if quarantine else "select",
+                        request_id=request_id, page=page, user_id=user,
+                    ).model_dump(),
+                )])
         if not ids:
             lines.append(escape(self.t("no_candidates")))
         action = "quarantine" if quarantine else "accounts"
@@ -248,7 +257,7 @@ class CoronerProtectionView:
         if (request is not None and user_id in request.targets and candidate is not None
                 and request.targets[user_id].candidate_id != candidate.id):
             candidate = None
-        lines = [f'<a href="tg://user?id={user_id}">{user_id}</a>']
+        lines = [self._profile_link(user_id)]
         if candidate is None:
             lines.append(escape(self.t("candidate_gone")))
         else:
@@ -263,7 +272,7 @@ class CoronerProtectionView:
             lines.append(escape(self.t("candidate_targets")))
             lines.extend(str(chat) for chat in targets[detail_page * size:(detail_page + 1) * size])
             lines.append(self.t("page", page=detail_page + 1, pages=target_pages))
-        buttons = [[InlineKeyboardButton(self.t("candidate_profile"), url=f"tg://user?id={user_id}")]]
+        buttons = []
         if candidate is not None:
             nav = []
             if detail_page:

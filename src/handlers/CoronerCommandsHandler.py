@@ -188,10 +188,13 @@ class CoronerCommandsHandler:
             elif action == "ack":
                 notice = coroner_text(update.locale, self.service.protection.acknowledge())
                 action = "review"
-            elif action in ("select", "approve", "approve_all", "reject", "recheck"):
-                result = self.service.protection.review(request_id, update.effective_user.id, action, data.user_id)
+            elif action in ("select", "qselect", "approve", "approve_all", "reject", "recheck"):
+                review_action = "select" if action == "qselect" else action
+                result = self.service.protection.review(
+                    request_id, update.effective_user.id, review_action, data.user_id,
+                )
                 notice = coroner_text(update.locale, result)
-                action = "accounts" if action == "select" else "review"
+                action = {"qselect": "quarantine", "select": "accounts"}.get(action, "review")
             elif action not in ("review", "accounts", "quarantine", "detectors", "detail"):
                 return
             await self.service.save(force=True)

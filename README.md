@@ -108,7 +108,8 @@ Administrator commands:
   the selected global grade. Requires a running module; also available in private chats.
 - `/coroner detectors`: Show rule settings, sample sufficiency, current values, trigger
   progress, and historical minimum/maximum/mean; also available through **Detectors**.
-- `/coroner quarantine`: Browse quarantined accounts and profile links.
+- `/coroner quarantine`: Browse quarantined accounts with grades, remaining quarantine
+  time and direct **Open profile** links on the same page.
 - `/coroner review`: Review a persisted snapshot, select accounts, approve, reject or
   request fresh checks. Also available from service notifications.
 - `/coroner acknowledge`: Release a safety incident after its quarantine is empty and
