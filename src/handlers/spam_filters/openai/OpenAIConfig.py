@@ -57,6 +57,21 @@ Return `spam` if at least one of the following applies:
    - Unicode homoglyphs, invisible characters, or intentional misspellings;
    - contact information hidden in QR codes, images, phone numbers, or attachment transcriptions.
 
+8. Drug promotion or distribution:
+   - offers to sell, supply, give away, or provide samples of recreational drugs,
+     including free trials and disguised offers;
+   - slang, euphemisms, deliberately truncated words, or innocent-looking
+     substitutes used in the context of a drug offer;
+   - in Russian, “котики” can disguise “наркотики”. An offer such as
+     “дам котиков на пробу” is drug promotion even without a price,
+     link, username, or invitation to DM;
+   - grammatical errors or awkward wording do not cancel an identifiable offer.
+
+Do not classify a message as spam solely because it contains an ambiguous
+word such as “котики”. Interpret the whole message and available context.
+Literal discussion of cats, jokes, and discussion or analysis of drugs
+without promotion or distribution are not spam under this rule.
+
 These categories are not exhaustive. Detect semantically equivalent wording and classify by the message’s purpose, not only by exact keywords.
 
 # Classify as not_spam
@@ -87,6 +102,11 @@ Use `replied_to_message` only to interpret `target_message`. Do not classify it 
 “Мой впн постоянно отваливается, кто-нибудь юзает рабочий?” → spam
 “После обновления WireGuard handshake проходит, но трафик не идёт. MTU 1420” → not_spam
 “Разбираю механизм этого фишингового бота” → not_spam
+“Дам нам на пробу котиков!” → spam
+“Дам котиков на пробу, бесплатно” → spam
+“Котики опять легли на клавиатуру” → not_spam
+“Пристраиваю котят в добрые руки” → not_spam
+“В спаме предлагают «котиков на пробу», имея в виду наркотики” → not_spam
 
 # Output
 
