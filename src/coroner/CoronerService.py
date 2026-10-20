@@ -210,9 +210,13 @@ class CoronerService:
         self._schedule_worker(application.job_queue, 1)
 
     def _schedule_worker(self, job_queue, delay):
+        # A late one-shot must still run: it schedules the next worker.
         job_queue.run_once(
             self._worker, delay, name="coroner-worker",
-            job_kwargs={"id": f"coroner-worker-{time.monotonic_ns()}"},
+            job_kwargs={
+                "id": f"coroner-worker-{time.monotonic_ns()}",
+                "misfire_grace_time": None,
+            },
         )
 
     def _sync_chats(self):
@@ -801,7 +805,7 @@ class CoronerService:
                 return False
         return targets == set(self.bot_state.moderated_chat_ids)
 
-    async def status_text(self, locale, notice=""):
+    async def status_text(self, locale):
         t = lambda key, **values: coroner_text(locale, key, **values)
         chat_ids = set(self.bot_state.moderated_chat_ids)
         totals = {}
@@ -869,8 +873,6 @@ class CoronerService:
             (now - job.enqueued_at for job in jobs), default=0,
         ))))
         lines.append(t("removed", counts=", ".join(f"{name}: {count}" for name, count in removed.items())))
-        if notice:
-            lines.extend(["", shorten(notice, 400)])
         entries = sorted(self._recent_errors(now), key=lambda entry: entry.last_seen, reverse=True)
         if entries:
             lines.extend(["", t("errors")])

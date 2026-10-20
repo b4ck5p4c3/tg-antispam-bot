@@ -98,6 +98,8 @@ Administrator commands:
   removals in 30 days, and up to five recent errors. Available in a private chat with
   the bot or a moderated group. The **Update** button refreshes the same global summary
   by editing the message without clearing errors.
+- `/coroner help`: Show command descriptions. Other subcommands return their own
+  result or view without appending the global summary.
 - `/coroner ref <user ID>`: Save a live reference account and this chat as its lookup
   context. This stops the module and requires a subsequent start.
 - `/coroner start`: Verify the reference and start checks in all moderated chats.
@@ -157,6 +159,21 @@ global age. Existing per-chat records initialize the global age from the earlies
 saved date automatically. The same global grade controls the check interval in every
 chat and is recorded on removal. Thresholds and intervals are in seconds.
 The shared 450 RPM budget includes checks, reference lookups, UI and retries.
+
+To import known members manually, **shut down the bot process** (not just
+`/coroner stop`) and run:
+
+```bash
+python3 import_coroner_members.py --chat-id -1001234567890 123456789 987654321
+# Or import a text file with user IDs separated by whitespace or commas:
+python3 import_coroner_members.py --chat-id -1001234567890 --file members.txt
+```
+
+New users start at G1 from the import time. Existing memberships, global ages,
+queue and protection state are preserved. The script writes atomically to
+`<DATA_FOLDER_PATH>/coroner_state.json` (default: `data/coroner_state.json`);
+`--state /path/to/coroner_state.json` selects another file. Restart the bot after
+importing. The chat must already be enabled with `/moderate`; import does not start checks.
 
 An account is a removal candidate only when its returned first name is exactly `""`.
 Invisible characters remain nonempty. Candidates require confirmation via `getChat`,

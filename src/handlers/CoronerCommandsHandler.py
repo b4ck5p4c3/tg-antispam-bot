@@ -51,9 +51,16 @@ class CoronerCommandsHandler:
         else:
             await self.service.api.call(self.service.bot.send_message, **params)
 
-    async def _display(self, update, notice="", *, edit=False):
+    async def _reply(self, update, text):
         chat_id = update.effective_chat.id
-        text = await self.service.status_text(update.locale, notice)
+        await self.service.api.call(
+            self.service.bot.send_message, chat_id=chat_id, text=text,
+            parse_mode=None, error_chat_id=chat_id,
+        )
+
+    async def _display(self, update, *, edit=False):
+        chat_id = update.effective_chat.id
+        text = await self.service.status_text(update.locale)
         kwargs = dict(chat_id=chat_id, text=text, parse_mode=None,
                       reply_markup=self._keyboard(update.locale), error_chat_id=chat_id)
         if edit:
@@ -75,24 +82,23 @@ class CoronerCommandsHandler:
             if chat.type != Chat.PRIVATE and (
                     chat.type not in (Chat.GROUP, Chat.SUPERGROUP)
                     or not self.service.bot_state.is_chat_moderated(chat.id)):
-                await self.service.api.call(
-                    context.bot.send_message, chat_id=chat.id, parse_mode=None,
-                    text=coroner_text(update.locale, "group_only"), error_chat_id=chat.id,
-                )
+                await self._reply(update, coroner_text(update.locale, "group_only"))
                 return
             args = context.args or []
-            action = args[0].casefold() if args else ""
+            if not args:
+                await self._display(update)
+                return
+            action = args[0].casefold()
             notice = ""
             if action in ("detectors", "quarantine", "review") and len(args) == 1:
                 await self._protection_display(update, action)
                 return
-            valid = ((action == "" and not args)
-                     or (action in ("start", "stop", "acknowledge") and len(args) == 1)
+            valid = ((action in ("help", "start", "stop", "acknowledge") and len(args) == 1)
                      or (action == "ref" and len(args) == 2 and args[1].isascii()
                          and args[1].isdigit() and 0 < int(args[1]) < 2 ** 52)
                      or (action == "run" and len(args) == 2
                          and args[1].upper() in ("G1", "G2", "G3", "G4", "ALL")))
-            if not valid:
+            if not valid or action == "help":
                 notice = coroner_text(update.locale, "usage")
             elif action == "acknowledge":
                 notice = coroner_text(update.locale, self.service.protection.acknowledge())
@@ -110,14 +116,14 @@ class CoronerCommandsHandler:
                 elif await self.service.set_reference(int(args[1]), chat.id):
                     notice = coroner_text(update.locale, "ref_saved", user_id=int(args[1]), chat_id=chat.id)
                 else:
-                    notice = coroner_text(update.locale, "start_failed")
+                    notice = coroner_text(update.locale, "ref_failed")
             elif action == "run":
                 if self.service.state.status != "running":
                     notice = coroner_text(update.locale, "not_running")
                 else:
                     added, existing = await self.service.enqueue_grade(args[1].upper())
                     notice = coroner_text(update.locale, "queued", added=added, existing=existing)
-            await self._display(update, notice)
+            await self._reply(update, notice)
         except (TelegramError, CoronerInterrupted):
             pass  # The API wrapper has already recorded the actual cause.
         except Exception as error:

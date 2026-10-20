@@ -72,7 +72,20 @@ class Locale(BaseModel):
     service_list_subscribers: str
     openai_service_unavailable: str
     openai_service_recovered: str
-    coroner_usage: str = "Coroner: /coroner, /coroner run G1|G2|G3|G4|ALL, /coroner ref <ID>, /coroner start, /coroner stop, /coroner detectors, /coroner quarantine, /coroner review, /coroner acknowledge. Subcommands and grades ignore case."
+    coroner_usage: str = (
+        "Coroner commands (administrators only):\n"
+        "/coroner — global statistics and recent errors.\n"
+        "/coroner help — show this help.\n"
+        "/coroner ref <ID> — save a live reference; run inside a moderated group.\n"
+        "/coroner start — verify the reference and start checks.\n"
+        "/coroner stop — stop checks; observation continues.\n"
+        "/coroner run G1|G2|G3|G4|ALL — queue checks; requires a running module.\n"
+        "/coroner detectors — anomaly detector statistics and thresholds.\n"
+        "/coroner quarantine — quarantined accounts and profile links.\n"
+        "/coroner review — review deletion candidates.\n"
+        "/coroner acknowledge — release a resolved protection incident.\n"
+        "Commands apply across all moderated chats. Subcommands and grades ignore case."
+    )
     coroner_group_only: str = "Use Coroner in a private chat with the bot or a moderated group or supergroup."
     coroner_ref_group_only: str = "Set the reference with /coroner ref <ID> in a moderated group where the bot can look up this account."
     coroner_stopped: str = "Coroner is stopped. Observation continues; checks require /coroner start."
@@ -82,7 +95,8 @@ class Locale(BaseModel):
     coroner_not_running: str = "Checks are disabled. Use /coroner start first."
     coroner_ref_saved: str = "Reference account {user_id} saved with chat {chat_id}. Coroner remains stopped; use /coroner start."
     coroner_ref_required: str = "Set a live reference account with /coroner ref <ID> before starting."
-    coroner_start_failed: str = "Coroner could not start. See the errors below."
+    coroner_start_failed: str = "Coroner could not start. Use /coroner to view recent errors."
+    coroner_ref_failed: str = "Could not save the reference account. Use /coroner to view recent errors."
     coroner_queued: str = "Added checks: {added}. Already queued: {existing}."
     coroner_update: str = "Update"
     coroner_heading: str = "Coroner — all moderated chats: {count}"
