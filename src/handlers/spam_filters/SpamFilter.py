@@ -28,8 +28,8 @@ class SpamFilter:
 
     async def _on_spam(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Bans the user if the message is identified as spam."""
-        sender_chat = self.telegram_helper.extract_message_sender_chat(update.message)
-        sender_user = self.telegram_helper.extract_message_user(update.message)
+        sender_chat = self.telegram_helper.extract_message_sender_chat(update.effective_message)
+        sender_user = self.telegram_helper.extract_message_user(update.effective_message)
         if sender_chat is not None:
             self.logger.info(
                 "%s Moderation action: banning sender chat %s",
@@ -42,25 +42,31 @@ class SpamFilter:
                 self.__get_trace_id(update),
                 sender_user.id,
             )
-        await self.telegram_helper.try_remove_message(context, update.message)
-        await self.telegram_helper.ban_message_author(context, update.message)
+        await self.telegram_helper.try_remove_message(context, update.effective_message)
+        await self.telegram_helper.ban_message_author(context, update.effective_message)
 
     async def __get_ignore_reason(self, update: EnrichedUpdate) -> str | None:
-        if update.message is None:
+        if update.effective_message is None:
             return "update is not a message"
-        sender_user = self.telegram_helper.extract_message_user(update.message)
+        sender_user = self.telegram_helper.extract_message_user(update.effective_message)
         sender_user_id = None if sender_user is None else sender_user.id
 
-        if self.__is_message_type_not_supported(update.message):
+        if self.__is_message_type_not_supported(update.effective_message):
             return "message type is not supported"
-        if update.message.is_automatic_forward:
+        if update.effective_message.is_automatic_forward:
             return "message is an automatic forward from a linked channel"
-        if self.telegram_helper.is_message_from_anonymous_admin(update.message):
+        if self.telegram_helper.is_message_from_anonymous_admin(update.effective_message):
             return "message was sent by an anonymous admin"
-        if sender_user_id is not None and self.state.is_user_trusted(sender_user_id):
-            return f"user {sender_user_id} is trusted"
-        if not self.state.is_chat_moderated(update.message.chat_id):
-            return f"chat {update.message.chat_id} is not moderated"
+        if sender_user_id is not None:
+            history = self.state.get_message_edit_history(update.effective_message.chat_id, sender_user_id)
+            is_tracked_message = history is not None and history.message_id == update.effective_message.id
+            if is_tracked_message and update.update_id == history.last_update_id:
+                return "tracked message update was already processed"
+            check_edit = update.edited_message is not None and (history is None or is_tracked_message)
+            if self.state.is_user_trusted(sender_user_id) and not check_edit:
+                return f"user {sender_user_id} is trusted"
+        if not self.state.is_chat_moderated(update.effective_message.chat_id):
+            return f"chat {update.effective_message.chat_id} is not moderated"
         if sender_user_id is not None and await self.state.is_admin(sender_user_id, update.effective_chat.id):
             return f"user {sender_user_id} is an admin"
         return None
@@ -74,7 +80,7 @@ class SpamFilter:
 
     async def __on_filter_pass(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Executed when the message passes all filters successfully."""
-        sender_user = self.telegram_helper.extract_message_user(update.message)
+        sender_user = self.telegram_helper.extract_message_user(update.effective_message)
         if sender_user is None:
             self.logger.debug(
                 "%s Message has no user author, skipping trust update",
@@ -90,12 +96,12 @@ class SpamFilter:
 
     @staticmethod
     def __get_trace_id(update: EnrichedUpdate) -> str:
-        if update.message is None:
+        if update.effective_message is None:
             return f"[update_id={update.update_id}]"
-        return f"[chat_id={update.message.chat_id} message_id={update.message.id}]"
+        return f"[chat_id={update.effective_message.chat_id} message_id={update.effective_message.id}]"
 
     def __get_message_metadata(self, update: EnrichedUpdate) -> str:
-        message = update.message
+        message = update.effective_message
         if message is None:
             return "message=no"
         sender_user = self.telegram_helper.extract_message_user(message)

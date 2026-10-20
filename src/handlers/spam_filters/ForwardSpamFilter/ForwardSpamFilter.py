@@ -19,7 +19,7 @@ def get_channel_id(origin: MessageOrigin) -> Optional[int]:
 
 
 def get_forward_channel_id(update: Update) -> Optional[int]:
-    forward_origin = update.message.forward_origin
+    forward_origin = update.effective_message.forward_origin
     return get_channel_id(forward_origin)
 
 

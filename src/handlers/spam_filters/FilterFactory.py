@@ -2,6 +2,7 @@ from os import getenv
 
 from src.handlers.spam_filters.ChannelSpamFilter.ChannelSpamFilter import ChannelSpamFilter
 from src.handlers.spam_filters.ForwardSpamFilter.ForwardSpamFilter import ForwardSpamFilter
+from src.handlers.spam_filters.MessageEditSpamFilter import MessageEditSpamFilter
 from src.handlers.spam_filters.OCRFilter import OCRFilter
 from src.handlers.spam_filters.SpamFilter import SpamFilter
 from src.handlers.spam_filters.lols.LolsSpamFilter import LolsSpamFilter
@@ -34,7 +35,8 @@ class FilterFactory:
         """Returns the default chain of spam spam_filters"""
         tesseract_path = getenv("TESSERACT_PATH", "/usr/bin/tesseract")
         tesseract_lang = getenv("TESSERACT_LANG", "rus")
-        return FilterFactory.Builder(ChannelSpamFilter(state)) \
+        return FilterFactory.Builder(MessageEditSpamFilter(state, openai_config)) \
+            .then(ChannelSpamFilter(state)) \
             .then(LolsSpamFilter(state)) \
             .then(ForwardSpamFilter(state)) \
             .then(OCRFilter(state, tesseract_path, tesseract_lang)) \

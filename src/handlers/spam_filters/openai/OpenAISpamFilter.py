@@ -37,7 +37,7 @@ class OpenAISpamFilter(SpamFilter):
         if classification is None:
             return False
 
-        message = update.message
+        message = update.effective_message
         self.logger.info(
             "OpenAI verdict for message %s: %s (%s)",
             message.id,
@@ -52,12 +52,12 @@ class OpenAISpamFilter(SpamFilter):
 
     async def _on_spam(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Handles the action to take when a message is identified as spam."""
-        user = self.telegram_helper.extract_message_user(update.message)
-        chat_id = update.message.chat_id
-        await self.telegram_helper.try_remove_message(context, update.message)
+        user = self.telegram_helper.extract_message_user(update.effective_message)
+        chat_id = update.effective_message.chat_id
+        await self.telegram_helper.try_remove_message(context, update.effective_message)
         if user is None:
             self._remove_spam_reason(update)
-            await self.telegram_helper.ban_message_author(context, update.message)
+            await self.telegram_helper.ban_message_author(context, update.effective_message)
             return
         await self.telegram_helper.restrict_chat_member(
             context,
@@ -78,12 +78,12 @@ class OpenAISpamFilter(SpamFilter):
             self.openai_config.ban_notification_message_delete_delay_sec,
         )
         context.job_queue.run_once(
-            lambda job_context: self.telegram_helper.ban_message_author(job_context, update.message),
+            lambda job_context: self.telegram_helper.ban_message_author(job_context, update.effective_message),
             self._ban_delay_seconds,
         )
 
     def _prepare_message_input(self, update: EnrichedUpdate) -> OpenAIMessageInput:
-        message = update.message
+        message = update.effective_message
         replied_to_message = ""
         if message.reply_to_message is not None:
             replied_to_message = TelegramHelper.extract_message_text(message.reply_to_message) or ""
@@ -93,15 +93,22 @@ class OpenAISpamFilter(SpamFilter):
             for recognized_photo in (update.recognized_photos or ())
             if recognized_photo.ocr_text.strip() != ""
         ]
+        attachment_transcript = "\n\n".join(attachment_transcripts)
+        history = update.message_history
+        if history is not None:
+            history.revisions[-1].attachment_transcript = attachment_transcript
+            user = self.telegram_helper.extract_message_user(message)
+            self.state.save_message_edit_history(message.chat_id, user.id, history)
         return OpenAIMessageInput(
             target_message=TelegramHelper.extract_message_text(message) or "",
-            attachment_transcript="\n\n".join(attachment_transcripts),
+            attachment_transcript=attachment_transcript,
             replied_to_message=replied_to_message,
+            message_history=history.revisions[:-1] if history is not None else [],
         )
 
     def _get_restrict_message(self, update: EnrichedUpdate) -> str:
-        user = self.telegram_helper.extract_message_user(update.message)
-        reason = self._spam_reasons[(update.message.chat_id, update.message.id)]
+        user = self.telegram_helper.extract_message_user(update.effective_message)
+        reason = self._spam_reasons[(update.effective_message.chat_id, update.effective_message.id)]
         return update.locale.openai_user_ban_notification.format(
             user=user,
             reason=escape_markdown(reason),
@@ -109,7 +116,7 @@ class OpenAISpamFilter(SpamFilter):
         )
 
     def _remove_spam_reason(self, update: EnrichedUpdate) -> None:
-        self._spam_reasons.pop((update.message.chat_id, update.message.id), None)
+        self._spam_reasons.pop((update.effective_message.chat_id, update.effective_message.id), None)
 
     def _get_ban_delay_seconds(self) -> int:
         if not is_development_mode():

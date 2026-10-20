@@ -13,6 +13,17 @@ The bot uses a chain of spam filters to evaluate each incoming message. These fi
 more complex AI-driven analyses. If a message is identified as spam, the bot can take actions such as deleting the
 message or banning the user
 
+The first checked message from each user in each chat remains monitored after the user becomes trusted.
+Every edit is checked again, with all recorded earlier versions (text/caption, OCR transcription, and reply context)
+included in the AI request. The history and edit counter are persisted in `data/state.json` across restarts.
+Admins, anonymous admins, linked-channel automatic forwards, and chats without moderation remain exempt.
+
+Set `max_message_edits` in `data/openai_config.json` to change the edit limit (default: `10`; minimum: `0`).
+Edits 1–10 are checked normally; edit 11 deletes the message and bans its author immediately, before OCR or any
+external spam checks. Restart the bot after changing the configuration.
+For users already trusted before history tracking was enabled, the first observed edit starts tracking that message.
+Telegram does not provide versions from before the bot started recording them.
+
 ## How to run it without B4CKSP4CE infrastructure
 
 1. Clone the repository and navigate to the project directory `cd tg_antispam_bot`
@@ -96,7 +107,7 @@ the `prompt` field are migrated to `custom` automatically on startup.
 
 The default classifier uses `gpt-5.6-luna` through the Responses API with strict Structured Outputs,
 `reasoning_effort: "low"`, and `text_verbosity: "low"`. The model receives the target message, OCR transcription,
-and replied-to message.
+replied-to message, and the recorded history of edits to the first message.
 Configurations still using the previous default model, `gpt-4o-mini`, are migrated to `gpt-5.6-luna` on startup.
 
 ## Healthcheck endpoint

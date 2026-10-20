@@ -27,7 +27,7 @@ class LolsSpamFilter(HTTPJsonSpamFilter):
 
     async def _is_spam(self, update: Update, context: CallbackContext) -> bool:
         """Checks if message is spam. Returns true if message is spam"""
-        message_author = self.telegram_helper.extract_message_user(update.message)
+        message_author = self.telegram_helper.extract_message_user(update.effective_message)
         if message_author is None:
             return False
         return self.is_spam(message_author.id)
@@ -90,8 +90,8 @@ class LolsSpamFilter(HTTPJsonSpamFilter):
 
     @staticmethod
     def __get_reposted_group_id(update: Update) -> int | None:
-        if update.message is None or update.message.forward_origin is None:
+        if update.effective_message is None or update.effective_message.forward_origin is None:
             return None
-        if isinstance(update.message.forward_origin, MessageOriginChat):
-            return update.message.forward_origin.sender_chat.id
+        if isinstance(update.effective_message.forward_origin, MessageOriginChat):
+            return update.effective_message.forward_origin.sender_chat.id
         return None

@@ -145,11 +145,13 @@ class BotBuilder:
         self.telegram_application.add_handler(
             CallbackQueryHandler(self.__with_enriched_update(button_click_handler.handle_button_click_and_route)))
         self.telegram_application.add_handler(
-            MessageHandler(filters.ALL, self.__with_enriched_update(antispam_filters.apply)))
+            MessageHandler(filters.UpdateType.MESSAGES, self.__with_enriched_update(antispam_filters.apply)))
         openai_watchdog.start(self.telegram_application)
 
     def __add_command_handler(self, command: str, handler):
-        self.telegram_application.add_handler(CommandHandler(command, self.__with_enriched_update(handler)))
+        self.telegram_application.add_handler(CommandHandler(
+            command, self.__with_enriched_update(handler), filters=filters.UpdateType.MESSAGE,
+        ))
 
     def __get_state(self) -> BotState:
         admin_provider: AdminProvider = self.__admin_provider_supplier()

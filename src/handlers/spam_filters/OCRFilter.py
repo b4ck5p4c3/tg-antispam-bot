@@ -37,14 +37,14 @@ class OCRFilter(SpamFilter):
 
     async def _is_spam(self, update: EnrichedUpdate, context: CallbackContext) -> bool:
         recognized_photos = []
-        if update.message.photo:
-            photo = update.message.photo[-1]
-            trace_id = f"[chat_id={update.message.chat_id} message_id={update.message.id}]"
+        if update.effective_message.photo:
+            photo = update.effective_message.photo[-1]
+            trace_id = f"[chat_id={update.effective_message.chat_id} message_id={update.effective_message.id}]"
             self.logger.debug(
                 "%s OCR photo selected: variants=%s selected_unique_id=%s "
                 "selected_file_id=%s width=%s height=%s file_size=%s",
                 trace_id,
-                len(update.message.photo),
+                len(update.effective_message.photo),
                 photo.file_unique_id,
                 self.__describe_identifier(photo.file_id),
                 photo.width,

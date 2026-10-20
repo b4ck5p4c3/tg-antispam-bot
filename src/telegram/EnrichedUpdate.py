@@ -3,6 +3,7 @@ from telegram import Update
 from src.locale.Locale import Locale
 from src.locale.LocaleFactory import LocaleFactory
 from src.telegram.PhotoSizeWithRecognition import PhotoSizeWithRecognition
+from src.util.data.BotState import MessageEditHistory
 
 
 class EnrichedUpdate(Update):
@@ -35,6 +36,7 @@ class EnrichedUpdate(Update):
         )
         self._locale = locale
         self._recognized_photos = None
+        self._message_history = None
 
     @staticmethod
     def from_update(update: Update, locale_factory: LocaleFactory) -> 'EnrichedUpdate':
@@ -54,3 +56,10 @@ class EnrichedUpdate(Update):
 
     def set_recognized_photos(self, recognized_photos: tuple[PhotoSizeWithRecognition, ...]):
         self._recognized_photos = recognized_photos
+
+    @property
+    def message_history(self) -> MessageEditHistory | None:
+        return self._message_history
+
+    def set_message_history(self, history: MessageEditHistory) -> None:
+        self._message_history = history

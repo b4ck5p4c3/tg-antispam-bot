@@ -1,6 +1,6 @@
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field
 
 from src.util.admin.AdminProvider import AdminProvider
 from src.util.data.BotEvent import BotEvent
@@ -29,6 +29,17 @@ class CachedChannel(BaseModel):
     id: int
 
 
+class MessageRevision(BaseModel):
+    target_message: str
+    attachment_transcript: str = ""
+    replied_to_message: str = ""
+
+
+class MessageEditHistory(BaseModel):
+    message_id: int
+    edit_count: int = 0
+    last_update_id: int = -1
+    revisions: list[MessageRevision] = Field(default_factory=list)
 
 
 class BotState(BaseModel):
@@ -39,6 +50,10 @@ class BotState(BaseModel):
     audit_log_chat_id: Optional[int] = None
     user_cache: dict[int, CachedUser] = {}
     channel_cache: dict[int, CachedChannel] = {}
+    message_edit_histories: dict[int, dict[int, MessageEditHistory]] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("message_edit_histories", "first_message_histories"),
+    )
     __state_repo: ModelRepo = None
     __admin_provider: AdminProvider = None
 
@@ -142,10 +157,18 @@ class BotState(BaseModel):
 
     def trust(self, user_id: int):
         """
-        Add user to trusted users list (trusted users are not being checked for spam).
+        Trust subsequent messages; edits to the tracked first message are still checked.
         :param user_id: User id.
         """
-        self.trusted_user_ids.append(user_id)
+        if user_id not in self.trusted_user_ids:
+            self.trusted_user_ids.append(user_id)
+            self.__state_repo.save(self)
+
+    def get_message_edit_history(self, chat_id: int, user_id: int) -> Optional[MessageEditHistory]:
+        return self.message_edit_histories.get(chat_id, {}).get(user_id)
+
+    def save_message_edit_history(self, chat_id: int, user_id: int, history: MessageEditHistory) -> None:
+        self.message_edit_histories.setdefault(chat_id, {})[user_id] = history
         self.__state_repo.save(self)
 
 
