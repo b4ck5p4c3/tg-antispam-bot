@@ -12,6 +12,7 @@ from src.handlers.ConfigurationCommandsHandler import ConfigurationCommandsHandl
 from src.handlers.ManualModerationCommandsHandler import ManualModerationCommandsHandler
 from src.handlers.ReportCommandsHandler import ReportCommandsHandler
 from src.handlers.ServiceNotificationsHandler import ServiceNotificationsHandler
+from src.handlers.UnbanCommandsHandler import UnbanCommandsHandler
 from src.handlers.spam_filters.FilterFactory import FilterFactory
 from src.handlers.spam_filters.SpamFilter import SpamFilter
 from src.handlers.spam_filters.openai.OpenAIConfig import OpenAIFilterConfig
@@ -119,15 +120,17 @@ class BotBuilder:
         configuration_commands_handler: ConfigurationCommandsHandler = ConfigurationCommandsHandler(state)
         manual_commands_handler: ManualModerationCommandsHandler = ManualModerationCommandsHandler(state)
         report_commands_handler: ReportCommandsHandler = ReportCommandsHandler(state)
+        unban_commands_handler = UnbanCommandsHandler(state)
         cache_handler: CacheHandler = CacheHandler(state)
         button_click_handler: ButtonClickHandler = ButtonClickHandler(state)
-        button_click_handler.set_listeners(report_commands_handler)
+        button_click_handler.set_listeners(report_commands_handler, unban_commands_handler)
 
         self.__add_command_handler("moderate", configuration_commands_handler.handle_add_moderable_chat)
         self.__add_command_handler("abandon", configuration_commands_handler.handle_remove_moderable_chat)
         self.__add_command_handler("set_audit_log", configuration_commands_handler.set_channel_as_audit_log)
         self.__add_command_handler("unset_audit_log", configuration_commands_handler.unset_channel_as_audit_log)
         self.__add_command_handler("ban", manual_commands_handler.handle_ban_user)
+        self.__add_command_handler("unban", unban_commands_handler.handle_unban_user)
         self.__add_command_handler("banc", manual_commands_handler.handle_ban_community)
         self.__add_command_handler("report", report_commands_handler.handle_report_command)
         self.__add_command_handler("as_service", service_notifications_handler.handle_service_command)

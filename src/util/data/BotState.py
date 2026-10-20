@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Literal, Optional
 
 from pydantic import AliasChoices, BaseModel, Field
 
@@ -42,6 +42,24 @@ class MessageEditHistory(BaseModel):
     revisions: list[MessageRevision] = Field(default_factory=list)
 
 
+class AuditLogBan(BaseModel):
+    user_id: int
+    banned_chat_id: int
+
+
+class UnbanChat(BaseModel):
+    title: str
+    status: Literal["pending", "unbanned", "not_banned"] = "pending"
+    error: Optional[str] = None
+
+
+class UnbanRequest(BaseModel):
+    user_id: int
+    expected_username: Optional[str] = None
+    chats: dict[int, UnbanChat] = Field(default_factory=dict)
+    scan_errors: dict[int, str] = Field(default_factory=dict)
+
+
 class BotState(BaseModel):
     trusted_user_ids: list[int] = []
     banned_channel_ids: list[int] = []
@@ -50,6 +68,8 @@ class BotState(BaseModel):
     audit_log_chat_id: Optional[int] = None
     user_cache: dict[int, CachedUser] = {}
     channel_cache: dict[int, CachedChannel] = {}
+    audit_log_registry: dict[int, dict[int, AuditLogBan]] = Field(default_factory=dict)
+    unban_requests: dict[int, dict[int, UnbanRequest]] = Field(default_factory=dict)
     message_edit_histories: dict[int, dict[int, MessageEditHistory]] = Field(
         default_factory=dict,
         validation_alias=AliasChoices("message_edit_histories", "first_message_histories"),
@@ -130,6 +150,28 @@ class BotState(BaseModel):
         :return: Cached user or None.
         """
         return self.user_cache.get(user_id)
+
+    def get_cached_user_by_username(self, username: str) -> Optional[CachedUser]:
+        username = username.removeprefix("@").casefold()
+        matches = [
+            user for user in self.user_cache.values()
+            if user.username is not None and user.username.casefold() == username
+        ]
+        return matches[0] if len(matches) == 1 else None
+
+    def register_audit_log_ban(self, chat_id: int, message_id: int, ban: AuditLogBan) -> None:
+        self.audit_log_registry.setdefault(chat_id, {})[message_id] = ban
+        self.__state_repo.save(self)
+
+    def get_audit_log_ban(self, chat_id: int, message_id: int) -> Optional[AuditLogBan]:
+        return self.audit_log_registry.get(chat_id, {}).get(message_id)
+
+    def save_unban_request(self, chat_id: int, message_id: int, request: UnbanRequest) -> None:
+        self.unban_requests.setdefault(chat_id, {})[message_id] = request
+        self.__state_repo.save(self)
+
+    def get_unban_request(self, chat_id: int, message_id: int) -> Optional[UnbanRequest]:
+        return self.unban_requests.get(chat_id, {}).get(message_id)
 
     def set_cached_user(self, user: CachedUser) -> None:
         """

@@ -1,5 +1,6 @@
 from telegram.error import TelegramError
 from telegram.ext import CallbackContext
+from telegram.helpers import escape_markdown
 
 from src.handlers.BaseHandler import BaseHandler, admin_command, get_argument_value, get_int_argument_value
 from src.handlers.spam_filters.ForwardSpamFilter.ForwardSpamFilter import get_forward_channel_id, get_channel_id
@@ -35,6 +36,18 @@ class ManualModerationCommandsHandler(BaseHandler):
         ban_user_id = _extract_ban_user_id(update)
         ban_sender_chat = None if reply_message is None else self.telegram_helper.extract_message_sender_chat(reply_message)
         await self.telegram_helper.delete_message_with_delay(context, update.message, 20)
+        ban_username = None
+        args = update.message.text.split()[1:]
+        if reply_message is None and args and args[0].startswith("@"):
+            cached_user = self.state.get_cached_user_by_username(args[0])
+            if cached_user is None:
+                await self.telegram_helper.send_temporary_message(
+                    context, update.message.chat_id, update.locale.ban_username_not_found,
+                    remove_in_seconds=120,
+                )
+                return
+            ban_user_id = cached_user.id
+            ban_username = args[0][1:].casefold()
         if reply_message is not None and self.telegram_helper.is_message_from_anonymous_admin(reply_message):
             await self.telegram_helper.send_message(context, chat_id=update.message.chat_id,
                                                     text=update.locale.durachok)
@@ -53,6 +66,14 @@ class ManualModerationCommandsHandler(BaseHandler):
             if ban_sender_chat is not None:
                 await self.telegram_helper.ban_message_author(context, reply_message)
             else:
+                if ban_username is not None:
+                    member = await context.bot.get_chat_member(chat_id, ban_user_id)
+                    if (member.user.username or "").casefold() != ban_username:
+                        await self.telegram_helper.send_temporary_message(
+                            context, chat_id, update.locale.ban_username_changed,
+                            remove_in_seconds=120,
+                        )
+                        return
                 await self.telegram_helper.ban_chat_member(context, chat_id=chat_id, user_id=ban_user_id)
         except TelegramError as e:
             if ban_sender_chat is not None:
@@ -80,9 +101,18 @@ class ManualModerationCommandsHandler(BaseHandler):
         if reply_message is not None:
             await self.telegram_helper.audit_log_ban_for_message(reply_message, update, context)
         else:
-            await self.telegram_helper.audit_log(context, update.message, update.locale.audit_log_user_banned_by_id
-                                                 .format(banned_id=ban_user_id, banned_by=update.effective_user,
-                                                         chat=update.effective_chat))
+            audit_template = (
+                update.locale.audit_log_user_banned_by_username if ban_username is not None
+                else update.locale.audit_log_user_banned_by_id
+            )
+            await self.telegram_helper.audit_log(
+                context, update.message,
+                audit_template.format(
+                    banned_id=ban_user_id, banned_by=update.effective_user,
+                    chat=update.effective_chat, username=escape_markdown(ban_username or ""),
+                ),
+                banned_user_id=ban_user_id,
+            )
 
     @admin_command
     async def handle_ban_community(self, update: EnrichedUpdate, context: CallbackContext) -> None:

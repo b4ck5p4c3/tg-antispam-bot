@@ -4,11 +4,12 @@ from typing import Optional
 
 from requests import JSONDecodeError
 from telegram import Chat, ChatPermissions, File, Message, PhotoSize, User
+from telegram.error import TelegramError
 from telegram.ext import CallbackContext
 
 from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.util.DevelopmentMode import get_development_delay_seconds, is_development_mode
-from src.util.data.BotState import BotState
+from src.util.data.BotState import AuditLogBan, BotState
 
 
 class TelegramHelper:
@@ -57,6 +58,7 @@ class TelegramHelper:
             message_text = update.locale.report_non_text_message_placeholder
         truncated_message = message_text[:message_quote_max_len]
         sender_chat = self.extract_message_sender_chat(message)
+        banned_user_id = None
         if sender_chat is not None:
             audit_log_message = update.locale.audit_log_channel_banned_by_reply.format(
                 banned_channel_name=self.get_chat_display_name(sender_chat),
@@ -69,6 +71,7 @@ class TelegramHelper:
             banned_user = self.extract_message_user(message)
             if banned_user is None:
                 raise ValueError(f"Cannot determine message author for audit log for message {message.message_id}")
+            banned_user_id = banned_user.id
             audit_log_message = update.locale.audit_log_user_banned_by_reply.format(
                 banned_user=banned_user,
                 banned_by=update.effective_user,
@@ -77,7 +80,10 @@ class TelegramHelper:
             )
         message_photo = self.extract_message_photo(message)
 
-        await self.audit_log(context, update.message, audit_log_message, photo=message_photo)
+        await self.audit_log(
+            context, update.message, audit_log_message, photo=message_photo,
+            banned_user_id=banned_user_id, banned_chat_id=message.chat_id,
+        )
 
 
     async def ban_chat_member(self, context: CallbackContext, chat_id: int, user_id: int) -> None:
@@ -100,12 +106,14 @@ class TelegramHelper:
             )
 
     async def unban_chat_member(self, context: CallbackContext, chat_id: int, user_id: int) -> None:
-        await self.__execute_telegram_api_request(
+        result = await self.__execute_telegram_api_request(
             context.bot.unban_chat_member,
             chat_id=chat_id,
             user_id=user_id,
             only_if_banned=True,
         )
+        if result is not True:
+            raise TelegramError("Telegram did not confirm the unban")
         self.logger.info("Unbanned user %s in chat %s", user_id, chat_id)
 
     async def ban_chat_sender_chat(self, context: CallbackContext, chat_id: int, sender_chat_id: int) -> None:
@@ -119,7 +127,7 @@ class TelegramHelper:
 
     async def send_message(self, context: CallbackContext, chat_id: int, text: str = None, **kwargs) -> Message:
         return await self.__execute_telegram_api_request(context.bot.send_message, chat_id=chat_id, text=text,
-                                                         parse_mode="Markdown", **kwargs)
+                                                         parse_mode=kwargs.pop("parse_mode", "Markdown"), **kwargs)
 
     async def send_photo(self, context: CallbackContext, chat_id: int, photo: str | PhotoSize,
                          caption: str | None = None, **kwargs) -> Message:
@@ -167,19 +175,29 @@ class TelegramHelper:
         return await self.__execute_telegram_api_request(context.bot.get_chat, chat_id=chat_id)
 
     async def audit_log(self, context: CallbackContext, source_message: Message, message: str,
-                        photo: str | PhotoSize | None = None) -> None:
+                        photo: str | PhotoSize | None = None, *,
+                        banned_user_id: int | None = None, banned_chat_id: int | None = None) -> Message:
         audit_log_chat_id = self.state.get_audit_log_chat_id()
         self.logger.info(f"Sending audit log message `{message}` to chat {audit_log_chat_id}")
         target_chat_id = source_message.chat_id if audit_log_chat_id is None else audit_log_chat_id
         audit_log_message = self.__get_audit_log_message(message)
         if photo is not None:
-            await self.send_photo(context, chat_id=target_chat_id, photo=photo, caption=audit_log_message,
-                                  has_spoiler=True)
-            return
-        if audit_log_chat_id is None:
-            await self.send_message(context, chat_id=source_message.chat_id, text=audit_log_message)
-            return
-        await self.send_message(context, chat_id=audit_log_chat_id, text=audit_log_message)
+            sent_message = await self.send_photo(
+                context, chat_id=target_chat_id, photo=photo, caption=audit_log_message, has_spoiler=True,
+            )
+        else:
+            sent_message = await self.send_message(context, chat_id=target_chat_id, text=audit_log_message)
+        if sent_message is None:
+            raise TelegramError("Telegram did not return the audit log message")
+        if banned_user_id is not None:
+            self.state.register_audit_log_ban(
+                sent_message.chat_id, sent_message.message_id,
+                AuditLogBan(
+                    user_id=banned_user_id,
+                    banned_chat_id=source_message.chat_id if banned_chat_id is None else banned_chat_id,
+                ),
+            )
+        return sent_message
 
 
     def get_user_hyperlink(self, user_id: int):

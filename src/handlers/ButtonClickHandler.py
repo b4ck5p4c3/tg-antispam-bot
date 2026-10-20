@@ -16,7 +16,9 @@ def button_click(func):
 
 class ButtonClickHandler(BaseHandler):
 
-    _type_listeners = {}
+    def __init__(self, state):
+        super().__init__(state)
+        self._type_listeners = {}
 
     def set_listeners(self, *instances):
         for instance in instances:

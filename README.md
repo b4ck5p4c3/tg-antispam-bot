@@ -37,7 +37,8 @@ Telegram does not provide versions from before the bot started recording them.
 
 - `/moderate`: Add chat to the list of moderated chats
 - `/abandon`: Remove chat from the list of moderated chats
-- `/ban`: Ban user from the chat
+- `/ban`: Ban a user from the chat by replying to their message or providing a user ID or `@username`
+- `/unban`: Unban a user by replying to a registered ban audit message, or by providing a user ID or `@username`
 - `/banc`: Restrict reposting of messages from the chat (only first message)
 - `/report`: Report spam and manage report notification subscriptions
 - `/as_service`: Manage service notification subscriptions
@@ -49,6 +50,31 @@ Telegram does not provide versions from before the bot started recording them.
 The bot will log all usage of the `/ban` command in the chat configured for audit logging.
 By default, logs are saved in the chat where the command was executed. However, you can specify a different chat for
 logging by using the `/set_audit_log` command.
+
+`/ban @username` resolves usernames case-insensitively using the persistent user cache and checks the user's current
+username before banning. For unknown or changed usernames, use a numeric ID or reply to the user's message instead.
+
+New user ban audit messages are registered in `data/state.json`, keyed by the audit chat ID and message ID.
+Each entry stores the banned user ID and the original chat ID; `/unban` never extracts IDs from audit message text.
+Both text and photo audit messages are registered, including logs sent to the original chat when no audit chat is set.
+Older audit messages without registry entries require `/unban <user ID>` or `/unban @username` instead.
+
+Replying to a registered audit message with `/unban` immediately unbans the user in the original chat and checks
+the other moderated chats for bans. Each remaining ban gets its own unban button.
+With `/unban <user ID>` or `/unban @username`, a single confirmed ban is removed immediately;
+multiple bans are presented as separate chat buttons. If some chats cannot be checked, the response reports those
+errors and offers buttons for the confirmed bans instead of assuming there is only one.
+Each successful button click removes that button and updates the same response with the chat where the user was
+unbanned. Responses are kept permanently, and their button state also survives bot restarts.
+
+Commands can be sent in a chat or privately by administrators of moderated chats. Unauthorized `/unban` commands
+are silently ignored, including invalid arguments and unknown usernames. Replies to audit messages require
+administrator access in the original chat; administrator access in the audit chat alone is insufficient.
+Every unban, including button clicks, checks administrator access in the target chat. Unauthorized button clicks
+are acknowledged without an alert or message change. Chats removed from moderation cannot be unbanned through
+old buttons. `@username` lookup uses the persistent user cache, so unknown usernames require a numeric ID.
+The user's current username is checked again before unbanning. Unbans use
+[`only_if_banned`](https://core.telegram.org/bots/api#unbanchatmember), so active members are not kicked.
 
 ⚠ Topics are not supported in audit logs. If you want to use audit logging, make sure to disable topics in the chat.
 
