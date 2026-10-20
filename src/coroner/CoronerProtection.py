@@ -6,7 +6,7 @@ from telegram.error import TelegramError
 
 from src.coroner.CoronerApi import CoronerInterrupted
 from src.coroner.CoronerProtectionModels import (
-    ApiObservation, CheckObservation, DayObservation, MetricObservation,
+    CheckObservation, DayObservation, MetricObservation,
     QuarantineCandidate, RemovalReservation, ReviewRequest, ReviewTarget, SafetySignal,
     calendar_timezone,
 )
@@ -35,6 +35,21 @@ class CoronerProtection:
 
     def recover(self):
         now = time.time()
+        # Retire persisted evidence and blocks belonging only to the removed detector.
+        if self.state.metrics.pop("api", None) is not None:
+            self.changed()
+        if "api" in self.state.active_rule_keys:
+            self.state.active_rule_keys.remove("api")
+            self.changed()
+        if self.state.reasons.pop("api", None) is not None:
+            if not self.state.reasons:
+                self.state.blocked = False
+                request = self.state.requests.get(self.state.current_request_id)
+                if request is not None and request.state == "pending":
+                    request.state = "superseded"
+                    request.decided_at = now
+                self.state.current_request_id = None
+            self.changed()
         if self.state.day_timezone is None:
             self.state.day_timezone = self.config.day_timezone
             self.changed()
@@ -103,16 +118,6 @@ class CoronerProtection:
             self.cancel_candidate(user_id, now)
         self.changed()
         self.evaluate(now)
-
-    def record_api(self, method, params, failed, background):
-        if not background or method not in ("get_chat", "get_chat_member"):
-            return
-        user_id = params.get("user_id", params.get("chat_id"))
-        if user_id == self.service.config.reference_user_id:
-            return
-        self.state.api_calls.append(ApiObservation(at=time.time(), failed=failed, user_id=user_id))
-        self.changed()
-        self.evaluate()
 
     def cancel_candidate(self, user_id, now=None, *, confirmed_alive=True):
         if self.state.quarantine.pop(user_id, None) is not None:
@@ -346,14 +351,6 @@ class CoronerProtection:
                            value=100 * unknown / len(records) if records else 0,
                            threshold=profiles.threshold_percent, enabled=len(records) >= profiles.minimum_users,
                            missing=f"{len(records)}/{profiles.minimum_users}"))
-        api = self.config.api_errors
-        calls = [record for record in self.state.api_calls if record.at > now - api.window_seconds]
-        errors = sum(record.failed for record in calls)
-        result.append(dict(key="api", kind="api", chat_id=None, grade=None, window=api.window_seconds,
-                           samples=len(calls), matches=errors, minimum=api.minimum_calls,
-                           minimum_matches=api.minimum_failures, value=100 * errors / len(calls) if calls else 0,
-                           threshold=api.threshold_percent, enabled=len(calls) >= api.minimum_calls,
-                           missing=f"{len(calls)}/{api.minimum_calls}"))
         today = self.day(now)
         days = [today - timedelta(days=index) for index in range(1, self.config.candidate_history_days + 1)]
         complete = []
@@ -443,7 +440,7 @@ class CoronerProtection:
 
     def prune(self, now):
         def size():
-            return (len(self.state.checks), len(self.state.api_calls), len(self.state.activity_conflicts),
+            return (len(self.state.checks), len(self.state.activity_conflicts),
                     len(self.state.cancelled_candidates), len(self.state.rejected_until), len(self.state.days),
                     len(self.state.reservations), len(self.state.requests),
                     sum(len(entries) for entries in self.state.metrics.values()))
@@ -452,7 +449,6 @@ class CoronerProtection:
         checks_horizon = max(self.config.false_results.window_seconds, self.config.alive_transitions.window_seconds,
                              self.config.profile_inconsistencies.window_seconds)
         self.state.checks = [entry for entry in self.state.checks if entry.at > now - checks_horizon]
-        self.state.api_calls = [entry for entry in self.state.api_calls if entry.at > now - self.config.api_errors.window_seconds]
         self.state.activity_conflicts = [entry for entry in self.state.activity_conflicts
                                          if entry[0] > now - self.config.activity_window_seconds]
         self.state.cancelled_candidates = [entry for entry in self.state.cancelled_candidates

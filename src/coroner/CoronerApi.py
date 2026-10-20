@@ -22,7 +22,6 @@ class CoronerApi:
         self._calls = deque()
         self._waiters = []
         self._sequence = 0
-        self.on_result = None
         self._next_at = 0.0
         self._blocked_until = 0.0
 
@@ -70,27 +69,20 @@ class CoronerApi:
         if guard is not None:
             guard()
         try:
-            result = await method(
+            return await method(
                 **params, read_timeout=15, write_timeout=15,
                 connect_timeout=5, pool_timeout=5,
             )
-            if self.on_result is not None:
-                self.on_result(method.__name__, params, False, background)
-            return result
         except BadRequest as error:
             if method.__name__ == "edit_message_text" and "message is not modified" in str(error).lower():
                 return None
             self._on_error(error_chat_id, method.__name__, params, error, background)
-            if self.on_result is not None:
-                self.on_result(method.__name__, params, True, background)
             raise
         except Exception as error:
             if isinstance(error, RetryAfter):
                 seconds = self.retry_delay(error)
                 self._blocked_until = max(self._blocked_until, time.monotonic() + seconds)
             self._on_error(error_chat_id, method.__name__, params, error, background)
-            if self.on_result is not None:
-                self.on_result(method.__name__, params, True, background)
             raise
 
     @staticmethod
@@ -99,6 +91,12 @@ class CoronerApi:
             value = error.retry_after
             return value.total_seconds() if isinstance(value, timedelta) else float(value)
         return default
+
+    @staticmethod
+    def is_invalid_participant(error) -> bool:
+        return isinstance(error, BadRequest) and str(error).strip().upper().removeprefix(
+            "BAD REQUEST: ",
+        ).strip() == "PARTICIPANT_ID_INVALID"
 
     @staticmethod
     def error_kind(error) -> str:

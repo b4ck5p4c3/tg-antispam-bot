@@ -73,25 +73,24 @@ class CoronerService:
             self._error(None, "config", "config_error", detail=error)
         try:
             self.state = self.store.load(self.STATE_FILE, CoronerState)
+            for user_id in self.state.excluded_user_ids:
+                self._exclude_user(user_id)
             # Upgrade existing per-chat records without resetting anyone's age.
             for chat_id, rows in self.state.participants.items():
                 for user_id, row in rows.items():
                     self._remember_user(chat_id, user_id, row.since)
-            # Restarting the process never resumes a previously running cleaner.
-            if self.state.status == "running":
-                self.state.status = "stopped"
-                self.store.save(self.STATE_FILE, self.state.model_dump_json(indent=2))
         except Exception as error:
             self._storage_healthy = False
             self._error(None, "storage", "storage_error", detail=error)
         if not self._storage_healthy or not self._config_healthy:
             self.state.status = "error"
+        # Resume saved work only after a fresh reference check in this process.
+        self._reference_pending = self.state.status == "running"
         self.api = CoronerApi(
             lambda: self.config.max_requests_per_minute, self._api_error,
             active=lambda: self.application is None or self.application.running,
         )
         self.protection = CoronerProtection(self)
-        self.api.on_result = self.protection.record_api
         # Recovery decisions must be durable before polling/webhook handling starts.
         if self._storage_healthy and self._revision != self._saved_revision:
             try:
@@ -109,6 +108,8 @@ class CoronerService:
         self._revision += 1
 
     def _remember_user(self, chat_id, user_id, since):
+        if user_id in self.state.excluded_user_ids:
+            return
         user = self.state.users.get(user_id)
         if user is None or since < user.since:
             self.state.users[user_id] = (user.model_copy(update={"since": since, "first_chat_id": chat_id})
@@ -117,6 +118,17 @@ class CoronerService:
 
     def _user_grade(self, user_id, now):
         return self.config.grade_for(self.state.users[user_id].since, now)
+
+    def _exclude_user(self, user_id):
+        self.state.excluded_user_ids.add(user_id)
+        self.state.users.pop(user_id, None)
+        for rows in self.state.participants.values():
+            rows.pop(user_id, None)
+        for key, job in list(self.state.queue.items()):
+            if job.user_id == user_id:
+                del self.state.queue[key]
+        self.state.protection.quarantine.pop(user_id, None)
+        self._changed()
 
     def _error(self, chat_id, key, message, *, detail=None, **values):
         text = self.t(message, **values)
@@ -147,11 +159,17 @@ class CoronerService:
         return self.errors
 
     def _api_error(self, chat_id, operation, params, error, background):
+        user_id = params.get("user_id")
+        if (background and operation in ("get_chat_member", "unban_chat_member")
+                and user_id is not None and user_id != self.config.reference_user_id
+                and CoronerApi.is_invalid_participant(error)):
+            self._exclude_user(user_id)
+            self._error(chat_id, f"excluded:{user_id}", "invalid_participant", user_id=user_id, detail=error)
+            return
         kind = self.api.error_kind(error)
         operation_key = f"operation_{operation}"
         if operation_key not in CORONER_MESSAGES:
             operation_key = "operation_default"
-        user_id = params.get("user_id")
         subject = self.t("api_subject", user_id=user_id) if user_id else ""
         self._error(
             chat_id, f"api:{operation}:{kind}:{user_id}", "api_error", detail=error,
@@ -239,6 +257,8 @@ class CoronerService:
 
     def _observe(self, chat_id, user_id, at, update_id, *, active=True,
                  status="member", joined=False, message_only=False):
+        if user_id in self.state.excluded_user_ids:
+            return
         rows = self.state.participants.setdefault(chat_id, {})
         row = rows.get(user_id)
         if row is not None and (at, update_id) < (row.last_event_at, row.last_update_id):
@@ -372,7 +392,7 @@ class CoronerService:
 
     def _enqueue(self, chat_id, user_id, row, source="scheduled") -> bool:
         key = f"{chat_id}:{user_id}"
-        if key in self.state.queue:
+        if user_id in self.state.excluded_user_ids or key in self.state.queue:
             return False
         self.state.queue[key] = CheckJob(
             chat_id=chat_id, user_id=user_id, generation=row.generation,
@@ -382,7 +402,8 @@ class CoronerService:
         return True
 
     def _remember_member(self, chat_id, member):
-        if not self.bot_state.is_chat_moderated(chat_id) or not is_present(member):
+        if (member.user.id in self.state.excluded_user_ids
+                or not self.bot_state.is_chat_moderated(chat_id) or not is_present(member)):
             return
         rows = self.state.participants.setdefault(chat_id, {})
         if member.user.id not in rows:
@@ -572,11 +593,12 @@ class CoronerService:
             except ChatMigrated as error:
                 await self.migrate_chat(job.chat_id, error.new_chat_id)
             except Exception as error:
-                job.attempts += 1
-                job.not_before = time.time() + self.api.retry_delay(error, self.config.retry_delay_seconds)
-                self._changed()
-                if not isinstance(error, TelegramError):
-                    self._error(job.chat_id, "worker", "worker_error", detail=error)
+                if self.state.queue.get(job.key) is job:
+                    job.attempts += 1
+                    job.not_before = time.time() + self.api.retry_delay(error, self.config.retry_delay_seconds)
+                    self._changed()
+                    if not isinstance(error, TelegramError):
+                        self._error(job.chat_id, "worker", "worker_error", detail=error)
             await self.save()
         except CoronerInterrupted:
             pass

@@ -127,6 +127,7 @@
   "coroner_operation_answer_callback_query": "acknowledge the button",
   "coroner_operation_default": "complete the operation",
   "coroner_profile_unknown": "The profile for user {user_id} is incomplete or contradictory. No removal was performed; the check will be retried.",
+  "coroner_invalid_participant": "User {user_id} was excluded from Coroner monitoring: Telegram rejected the participant ID. Further checks for this user are disabled.",
   "coroner_reference_failed": "CRITICAL: the reference account {user_id} was detected as deleted. Coroner is in error and requires a successful manual /coroner start.",
   "coroner_reference_unknown": "The reference account could not be verified as alive. Deletions are blocked until a successful reference check.",
   "coroner_protected_member": "Cannot remove user {user_id}: the account is a chat administrator or owner. No role changes were made.",
@@ -138,7 +139,6 @@
   "coroner_safety_kind_false": "Deleted-profile ratio",
   "coroner_safety_kind_candidates": "New daily deletion candidates",
   "coroner_safety_kind_transitions": "Recently alive accounts returning deleted",
-  "coroner_safety_kind_api": "Telegram API failures",
   "coroner_safety_kind_profiles": "Incomplete or contradictory profiles",
   "coroner_safety_kind_activity": "A quarantined account sent a new message",
   "coroner_safety_kind_quota": "Removal budget exhausted",
@@ -200,5 +200,6 @@
   "coroner_candidate_gone": "No longer a deletion candidate.",
   "coroner_candidate_targets": "Target chat IDs:",
   "coroner_candidate_profile": "Open profile",
+  "coroner_profile_link_unavailable": "Profile link unavailable",
   "coroner_no_candidates": "No accounts in this list."
 }

@@ -3,8 +3,12 @@
 Coroner has one reference account. Confirmed deletion candidates enter a persisted,
 user-wide quarantine before any removal. The default delay is 60 minutes. A candidate
 stores membership generations for every target chat, so approval cannot silently apply
-to a later rejoin or another chat. Profile links use `tg://user?id=...` and the numeric
-ID remains visible when a deleted profile cannot be opened.
+to a later rejoin or another chat. Where Telegram permits a profile mention, links use
+`tg://user?id=...`. Telegram can omit these mentions for inaccessible or deleted accounts,
+particularly in private conversations with the bot. The bot checks returned message
+entities and replaces omitted links with **Profile link unavailable** and a numeric ID
+formatted for copying. It cannot guarantee that a client can open every deleted profile;
+see [Telegram's linking restrictions](https://core.telegram.org/bots/api#formatting-options).
 
 ## Rules and initial thresholds
 
@@ -21,8 +25,6 @@ ID remains visible when a deleted profile cannot be opened.
 - Recently alive transitions: in 30 minutes, at least 20 recently alive checked users,
   at least 5 negative matches, and a 50% negative ratio. Recently alive means a
   successful check or actual new message within the previous 24 hours.
-- API failures: at least 20 background profile API calls in 5 minutes, at least 5
-  failures, and a 50% failure ratio. Reference and UI requests are excluded.
 - Incomplete/contradictory profiles: at least 20 unique users in 30 minutes, at least
   3 indeterminate profiles, and a 20% indeterminate ratio. These results never count
   as confirmed deletions.
@@ -47,7 +49,9 @@ An anomaly latches a module-wide removal block. The module may still report `run
 ordinary checks and observation continue; **Protection: blocked** reports the independent
 removal gate. `/coroner stop` still stops all profile checks, including approved work.
 A reference failure separately puts the module in `error` and requires a successful
-manual start. Restart always preserves protection and returns a running module to stopped.
+manual start. Restart preserves both protection and the saved module status. A running
+module checks the reference again before resuming its queue; stopped and error states
+require a manual start. The first launch defaults to stopped.
 
 Existing `/as_service` subscribers are notified only after rechecking their administrator
 rights in every moderated chat. The module edits its existing review notification at the
@@ -61,7 +65,8 @@ whole snapshot, reject the snapshot, or request fresh checks. Rechecks grant no 
 Quarantine and snapshot lists show **Open profile** links, numeric IDs, grades and
 quarantine deadlines together on each page. Open a profile directly from the list;
 no intermediate account card is required. Profile links appear in the message text
-instead of URL buttons, which Telegram can reject for privacy restrictions. Selecting
+instead of URL buttons, which Telegram can reject for privacy restrictions. Links that
+Telegram removes are explicitly labelled unavailable. Selecting
 an account keeps the current list and page open. The page size uses `review_page_size`.
 A new snapshot supersedes a pending one. New candidates or new memberships do not gain
 permission from an earlier snapshot. A fresh incident invalidates previous grants.
@@ -147,6 +152,9 @@ state and remain visible even after those temporary errors expire.
 
 The following `protection` object is added automatically to valid existing
 `coroner_config.json` files. Edit settings while stopped, then start to reload.
+Legacy `api_errors` settings are discarded automatically. The removed API failure
+detector no longer collects metrics or blocks removals. Existing blocks caused solely
+by that detector are cleared on startup; blocks from other causes are preserved.
 Existing candidate deadlines and approval expiry timestamps retain the values assigned
 when those records were created; duration changes apply to new records.
 
@@ -185,12 +193,6 @@ when those records were created; duration changes apply to new records.
       "minimum_users": 20,
       "minimum_matches": 5,
       "threshold_percent": 50.0
-    },
-    "api_errors": {
-      "window_seconds": 300,
-      "minimum_calls": 20,
-      "minimum_failures": 5,
-      "threshold_percent": 50
     },
     "profile_inconsistencies": {
       "window_seconds": 1800,

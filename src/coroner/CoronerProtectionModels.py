@@ -22,13 +22,6 @@ class RateRule(ProtectionModel):
     threshold_percent: float = Field(default=80, gt=0, le=100)
 
 
-class ApiRateRule(ProtectionModel):
-    window_seconds: int = Field(default=300, gt=0, strict=True)
-    minimum_calls: int = Field(default=20, gt=0, strict=True)
-    minimum_failures: int = Field(default=5, gt=0, strict=True)
-    threshold_percent: float = Field(default=50, gt=0, le=100)
-
-
 class RemovalLimit(ProtectionModel):
     name: str = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9_-]+$")
     window_seconds: int = Field(gt=0, strict=True)
@@ -58,7 +51,6 @@ class ProtectionConfig(ProtectionModel):
     alive_transitions: RateRule = Field(default_factory=lambda: RateRule(
         minimum_matches=5, threshold_percent=50,
     ))
-    api_errors: ApiRateRule = Field(default_factory=ApiRateRule)
     profile_inconsistencies: RateRule = Field(default_factory=lambda: RateRule(
         minimum_matches=3, threshold_percent=20,
     ))
@@ -79,6 +71,14 @@ class ProtectionConfig(ProtectionModel):
         RemovalLimit(name="daily", window_seconds=86400, chat_count=5, global_count=10,
                      chat_percent=10, global_percent=10),
     ])
+
+    @model_validator(mode="before")
+    @classmethod
+    def discard_removed_settings(cls, values):
+        # Accept configurations saved before the API failure detector was removed.
+        if isinstance(values, dict) and "api_errors" in values:
+            return {key: value for key, value in values.items() if key != "api_errors"}
+        return values
 
     @model_validator(mode="after")
     def validate_rules(self):
@@ -115,12 +115,6 @@ class CheckObservation(BaseModel):
     result: Literal["alive", "deleted", "unknown"]
     recently_alive: bool = False
     primary: bool = True
-
-
-class ApiObservation(BaseModel):
-    at: float
-    failed: bool
-    user_id: int | None = None
 
 
 class DayObservation(BaseModel):
@@ -216,7 +210,6 @@ class ProtectionState(BaseModel):
     day_timezone: str | None = None
     quarantine: dict[int, QuarantineCandidate] = Field(default_factory=dict)
     checks: list[CheckObservation] = Field(default_factory=list)
-    api_calls: list[ApiObservation] = Field(default_factory=list)
     days: dict[str, DayObservation] = Field(default_factory=dict)
     metrics: dict[str, list[MetricObservation]] = Field(default_factory=dict)
     rejected_until: dict[int, float] = Field(default_factory=dict)

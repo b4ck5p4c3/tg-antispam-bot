@@ -71,6 +71,8 @@ CORONER_MESSAGES = {
     "operation_default": "complete the operation",
     "profile_unknown": ("The profile for user {user_id} is incomplete or contradictory. "
                         "No removal was performed; the check will be retried."),
+    "invalid_participant": ("User {user_id} was excluded from Coroner monitoring: "
+                            "Telegram rejected the participant ID. Further checks for this user are disabled."),
     "reference_failed": ("CRITICAL: the reference account {user_id} was detected as deleted. "
                          "Coroner is in error and requires a successful manual /coroner start."),
     "reference_unknown": ("The reference account could not be verified as alive. "
@@ -88,7 +90,6 @@ CORONER_MESSAGES = {
     "safety_kind_false": "Deleted-profile ratio",
     "safety_kind_candidates": "New daily deletion candidates",
     "safety_kind_transitions": "Recently alive accounts returning deleted",
-    "safety_kind_api": "Telegram API failures",
     "safety_kind_profiles": "Incomplete or contradictory profiles",
     "safety_kind_activity": "A quarantined account sent a new message",
     "safety_kind_quota": "Removal budget exhausted",
@@ -150,6 +151,7 @@ CORONER_MESSAGES = {
     "candidate_gone": "No longer a deletion candidate.",
     "candidate_targets": "Target chat IDs:",
     "candidate_profile": "Open profile",
+    "profile_link_unavailable": "Profile link unavailable",
     "no_candidates": "No accounts in this list.",
 }
 

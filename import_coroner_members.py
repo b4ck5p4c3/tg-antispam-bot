@@ -43,6 +43,8 @@ def main() -> None:
     # Match the service's migration of older states without a global user registry.
     for chat_id, participants in state.participants.items():
         for user_id, participant in participants.items():
+            if user_id in state.excluded_user_ids:
+                continue
             user = state.users.get(user_id)
             if user is None:
                 state.users[user_id] = TrackedUser(since=participant.since, first_chat_id=chat_id)
@@ -52,8 +54,11 @@ def main() -> None:
 
     now = time.time()
     participants = state.participants.setdefault(args.chat_id, {})
-    added = new_users = 0
+    added = new_users = excluded = 0
     for user_id in sorted(user_ids):
+        if user_id in state.excluded_user_ids:
+            excluded += 1
+            continue
         if user_id in participants:
             continue
         participants[user_id] = Participant(first_seen_at=now)
@@ -66,8 +71,8 @@ def main() -> None:
         CoronerStore(str(args.state.parent)).save(args.state.name, state.model_dump_json(indent=2))
     except OSError as error:
         parser.error(str(error))
-    print(f"Added memberships: {added}; already recorded: {len(user_ids) - added}; "
-          f"new users in G1: {new_users}. Saved to {args.state}")
+    print(f"Added memberships: {added}; already recorded: {len(user_ids) - added - excluded}; "
+          f"excluded: {excluded}; new users in G1: {new_users}. Saved to {args.state}")
 
 
 if __name__ == "__main__":

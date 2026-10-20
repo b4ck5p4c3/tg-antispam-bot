@@ -1,7 +1,7 @@
 from html import escape
 import time
 
-from telegram import Chat, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Chat, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from telegram.error import TelegramError
 from telegram.ext import CallbackContext
 
@@ -46,10 +46,22 @@ class CoronerCommandsHandler:
         params = dict(chat_id=update.effective_chat.id, text=text, reply_markup=keyboard,
                       parse_mode=parse_mode, error_chat_id=update.effective_chat.id)
         if edit:
-            await self.service.api.call(self.service.bot.edit_message_text,
-                                        message_id=update.callback_query.message.message_id, **params)
+            message = await self.service.api.call(
+                self.service.bot.edit_message_text,
+                message_id=update.callback_query.message.message_id, **params,
+            )
+            if message is None:
+                message = update.callback_query.message
         else:
-            await self.service.api.call(self.service.bot.send_message, **params)
+            message = await self.service.api.call(self.service.bot.send_message, **params)
+        if isinstance(message, Message):
+            corrected = view.replace_missing_profile_links(text, message)
+            if corrected != text:
+                params["text"] = corrected
+                await self.service.api.call(
+                    self.service.bot.edit_message_text,
+                    message_id=message.message_id, **params,
+                )
 
     async def _reply(self, update, text):
         chat_id = update.effective_chat.id

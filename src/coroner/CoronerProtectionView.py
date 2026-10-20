@@ -22,6 +22,7 @@ class CoronerProtectionView:
         self.service = service
         self.protection = service.protection
         self.locale = locale
+        self.profile_ids = set()
 
     def t(self, key, **values):
         return coroner_text(self.locale, key, **values)
@@ -35,8 +36,25 @@ class CoronerProtectionView:
                 [self.button("reviews", "review")]]
 
     def _profile_link(self, user_id):
+        self.profile_ids.add(user_id)
         return (f'<a href="tg://user?id={user_id}">'
                 f'{escape(self.t("candidate_profile"))} · {user_id}</a>')
+
+    def missing_profile_links(self, message):
+        linked_ids = set()
+        urls = {f"tg://user?id={user_id}": user_id for user_id in self.profile_ids}
+        for entity in message.entities:
+            if entity.type == "text_mention" and entity.user is not None:
+                linked_ids.add(entity.user.id)
+            elif entity.type == "text_link" and entity.url in urls:
+                linked_ids.add(urls[entity.url])
+        return self.profile_ids - linked_ids
+
+    def replace_missing_profile_links(self, text, message):
+        for user_id in self.missing_profile_links(message):
+            unavailable = f'{escape(self.t("profile_link_unavailable"))} · <code>{user_id}</code>'
+            text = text.replace(self._profile_link(user_id), unavailable)
+        return text
 
     def _navigation(self, action, request_id, page, pages):
         buttons = []

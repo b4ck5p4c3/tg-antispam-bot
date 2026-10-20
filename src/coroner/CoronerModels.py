@@ -102,6 +102,7 @@ class CoronerState(BaseModel):
     status: Literal["stopped", "running", "error"] = "stopped"
     participants: dict[int, dict[int, Participant]] = Field(default_factory=dict)
     users: dict[int, TrackedUser] = Field(default_factory=dict)
+    excluded_user_ids: set[int] = Field(default_factory=set)
     queue: dict[str, CheckJob] = Field(default_factory=dict)
     removals: list[Removal] = Field(default_factory=list)
     protection: ProtectionState = Field(default_factory=ProtectionState)

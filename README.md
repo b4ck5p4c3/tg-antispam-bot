@@ -87,8 +87,10 @@ The user's current username is checked again before unbanning. Unbans use
 ## Coroner: deleted accounts
 
 Coroner observes members of moderated groups, saves its roster and queue in JSON,
-and checks accounts periodically. It starts **stopped**, including after every process
-restart. Observation continues while stopped; `/abandon` disables it for that chat.
+and checks accounts periodically. It starts **stopped** on the first launch. Later
+restarts preserve its saved status: `running` resumes after a fresh reference check,
+while `stopped` and `error` require a manual start. Observation continues while stopped;
+`/abandon` disables it for that chat.
 Users who never appear in an update cannot be discovered retroactively with the Bot API.
 
 Administrator commands:
@@ -109,7 +111,8 @@ Administrator commands:
 - `/coroner detectors`: Show rule settings, sample sufficiency, current values, trigger
   progress, and historical minimum/maximum/mean; also available through **Detectors**.
 - `/coroner quarantine`: Browse quarantined accounts with grades, remaining quarantine
-  time and direct **Open profile** links on the same page.
+  time and direct **Open profile** links on the same page. If Telegram removes a profile
+  link, it is labelled **Profile link unavailable**, with the ID formatted for copying.
 - `/coroner review`: Review a persisted snapshot, select accounts, approve, reject or
   request fresh checks. Also available from service notifications.
 - `/coroner acknowledge`: Release a safety incident after its quarantine is empty and
@@ -184,6 +187,13 @@ without leaving a permanent ban; previously banned users and administrators are 
 Telegram provides no atomic conditional kick: a ban made externally between the final
 membership check and the kick cannot be completely ruled out.
 
+`PARTICIPANT_ID_INVALID` during a participant check or removal excludes that user
+globally from Coroner's roster, queue and quarantine. The exclusion persists in
+`coroner_state.json` as `excluded_user_ids`; observation and manual imports skip it.
+This excludes the user from monitoring and does not kick them or count as a removal.
+Reference-account failures keep their existing protection behavior. Other API errors
+are retried normally. Removal history, safety incidents and budget evidence are retained.
+
 The reference is checked before starting, after every configured number of ordinary
 checks, and before every intended removal, including dry runs. A reference detected as
 deleted sets `error`, emits a `CRITICAL` log, and blocks work until an explicit successful
@@ -204,7 +214,7 @@ days after their last occurrence, and are lost on process restart;
 neither expiry nor Update clears the persisted emergency state.
 
 Coroner additionally blocks automatic removals on deletion-profile spikes, unusually
-many daily candidates, recently alive profiles becoming deleted, API failures,
+many daily candidates, recently alive profiles becoming deleted,
 contradictory profiles, or a new message from a quarantined account. Rules with too few
 observations explicitly show **Check disabled: insufficient data**. Quarantine and
 safety incidents persist across restarts; normal checks continue during a safety block.
