@@ -63,6 +63,7 @@ class ProtectionConfig(ProtectionModel):
     member_count_cache_seconds: int = Field(default=60, gt=0, strict=True)
     account_links_per_page: int = Field(default=100, gt=0, le=100, strict=True)
     account_links_per_row: int = Field(default=3, gt=0, le=8, strict=True)
+    account_link_retry_seconds: int = Field(default=300, gt=0, strict=True)
     detector_page_size: int = Field(default=3, gt=0, le=3, strict=True)
     resolved_request_retention_days: int = Field(default=30, gt=0, le=365, strict=True)
     reservation_retention_days: int = Field(default=30, gt=0, le=365, strict=True)

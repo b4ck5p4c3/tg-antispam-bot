@@ -6,8 +6,14 @@ stores membership generations for every target chat, so approval cannot silently
 to a later rejoin or another chat. Accounts are shown as inline URL buttons using
 `tg://user?id=...`; tapping one opens that account directly, without an intermediate
 bot card or selection step. Telegram can reject these buttons because of account privacy
-restrictions, especially in private chats. In that case the bot explicitly explains the
-restriction and shows copyable IDs while keeping the review and stop controls available.
+restrictions, especially in private chats. A rejected keyboard is split into groups
+until the individual restricted account buttons are identified. Allowed buttons stay
+available; only individually rejected IDs are listed as unavailable and formatted for
+copying. The probes edit the same message in the background, share the module RPM budget,
+and leave moderation, Stop and navigation responsive. A newer view cancels the old probes.
+Rejections are cached per recipient chat in memory for `account_link_retry_seconds`
+(default 300); **Update** explicitly retries the current page. Expected privacy refusals
+do not fill the module error list; other API failures are still recorded.
 See [Telegram's linking restrictions](https://core.telegram.org/bots/api#inlinekeyboardbutton).
 
 ## Rules and initial thresholds
@@ -210,6 +216,7 @@ when those records were created; duration changes apply to new records.
     "member_count_cache_seconds": 60,
     "account_links_per_page": 100,
     "account_links_per_row": 3,
+    "account_link_retry_seconds": 300,
     "detector_page_size": 3,
     "resolved_request_retention_days": 30,
     "reservation_retention_days": 30,

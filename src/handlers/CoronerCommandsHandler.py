@@ -30,7 +30,7 @@ class CoronerCommandsHandler:
         return InlineKeyboardMarkup(rows)
 
     async def _protection_display(self, update, action, request_id="-", page=0,
-                                  notice="", *, edit=False):
+                                  notice="", *, edit=False, refresh_links=False):
         if action == "detectors":
             try:
                 await self.service.protection.populations()
@@ -42,6 +42,7 @@ class CoronerCommandsHandler:
         await view.display(
             action, request_id, page, update.effective_chat.id, notice=notice,
             message_id=update.callback_query.message.message_id if edit else None,
+            refresh_links=refresh_links,
         )
 
     async def _reply(self, update, text):
@@ -54,15 +55,10 @@ class CoronerCommandsHandler:
     async def _display(self, update, *, edit=False):
         chat_id = update.effective_chat.id
         text = await self.service.status_text(update.locale)
-        kwargs = dict(chat_id=chat_id, text=text, parse_mode=None,
-                      reply_markup=self._keyboard(update.locale), error_chat_id=chat_id)
-        if edit:
-            await self.service.api.call(
-                self.service.bot.edit_message_text,
-                message_id=update.callback_query.message.message_id, **kwargs,
-            )
-        else:
-            await self.service.api.call(self.service.bot.send_message, **kwargs)
+        await self.service.account_links.display(
+            text, self._keyboard(update.locale), CoronerProtectionView(self.service, update.locale).t,
+            chat_id, update.callback_query.message.message_id if edit else None,
+        )
 
     async def handle_command(self, update: EnrichedUpdate, context: CallbackContext):
         chat = update.effective_chat
@@ -84,7 +80,7 @@ class CoronerCommandsHandler:
             action = args[0].casefold()
             notice = ""
             if action in ("detectors", "quarantine", "review") and len(args) == 1:
-                await self._protection_display(update, action)
+                await self._protection_display(update, action, refresh_links=True)
                 return
             valid = ((action in ("help", "start", "stop", "acknowledge") and len(args) == 1)
                      or (action == "ref" and len(args) == 2 and args[1].isascii()
@@ -168,6 +164,9 @@ class CoronerCommandsHandler:
             if update.effective_chat.type != Chat.PRIVATE and not self.service.bot_state.is_chat_moderated(chat_id):
                 return
             action, request_id, notice = data.action, data.request_id, ""
+            refresh_links = action in ("refresh_review", "refresh_quarantine")
+            if refresh_links:
+                action = action.removeprefix("refresh_")
             if action == "status":
                 await self._display(update, edit=True)
                 return
@@ -195,7 +194,8 @@ class CoronerCommandsHandler:
                 notice = coroner_text(update.locale, "review_stale")
                 action = "review"
             await self.service.save(force=True)
-            await self._protection_display(update, action, request_id, data.page, notice, edit=True)
+            await self._protection_display(update, action, request_id, data.page, notice,
+                                           edit=True, refresh_links=refresh_links)
         except (TelegramError, CoronerInterrupted):
             pass
         except Exception as error:

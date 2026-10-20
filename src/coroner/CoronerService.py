@@ -7,6 +7,7 @@ from telegram import Chat, ChatMember, Update
 from telegram.error import BadRequest, ChatMigrated, Forbidden, TelegramError
 
 from src.coroner.CoronerApi import CoronerApi, CoronerInterrupted
+from src.coroner.CoronerAccountLinks import CoronerAccountLinks
 from src.coroner.CoronerMessages import CORONER_MESSAGES, coroner_text, duration, shorten
 from src.coroner.CoronerModels import (
     CheckJob, CoronerConfig, CoronerState, Participant, Removal, TrackedUser,
@@ -91,6 +92,7 @@ class CoronerService:
             active=lambda: self.application is None or self.application.running,
         )
         self.protection = CoronerProtection(self)
+        self.account_links = CoronerAccountLinks(self)
         # Recovery decisions must be durable before polling/webhook handling starts.
         if self._storage_healthy and self._revision != self._saved_revision:
             try:

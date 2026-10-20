@@ -62,7 +62,7 @@ class CoronerApi:
                 self._condition.notify_all()
 
     async def call(self, method, *, priority=0, guard=None, error_chat_id=None,
-                   background=False, **params):
+                   background=False, expected_privacy_error=False, **params):
         await self._acquire(priority, guard)
         if not self._active():
             raise CoronerInterrupted()
@@ -76,7 +76,8 @@ class CoronerApi:
         except BadRequest as error:
             if method.__name__ == "edit_message_text" and "message is not modified" in str(error).lower():
                 return None
-            self._on_error(error_chat_id, method.__name__, params, error, background)
+            if not (expected_privacy_error and self.is_profile_privacy_error(error)):
+                self._on_error(error_chat_id, method.__name__, params, error, background)
             raise
         except Exception as error:
             if isinstance(error, RetryAfter):
@@ -91,6 +92,10 @@ class CoronerApi:
             value = error.retry_after
             return value.total_seconds() if isinstance(value, timedelta) else float(value)
         return default
+
+    @staticmethod
+    def is_profile_privacy_error(error) -> bool:
+        return isinstance(error, BadRequest) and "BUTTON_USER_PRIVACY_RESTRICTED" in str(error).upper()
 
     @staticmethod
     def is_invalid_participant(error) -> bool:

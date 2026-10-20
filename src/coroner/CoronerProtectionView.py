@@ -1,11 +1,9 @@
 import math
 import time
-from html import escape
 
 from pydantic import model_validator
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.error import BadRequest
 
 from src.coroner.CoronerMessages import coroner_text, duration, shorten
 from src.coroner.CoronerProtectionModels import MetricObservation
@@ -44,30 +42,14 @@ class CoronerProtectionView:
         return [[self.button("detectors", "detectors"), self.button("quarantine_button", "quarantine")],
                 [self.button("reviews", "review")]]
 
-    async def display(self, action, request_id, page, chat_id, *, notice="", message_id=None):
+    async def display(self, action, request_id, page, chat_id, *, notice="", message_id=None,
+                      refresh_links=False):
         text, keyboard = self.render(action, request_id, page)
         if notice:
             text = notice + "\n\n" + text
-        params = dict(chat_id=chat_id, text=text, reply_markup=keyboard,
-                      parse_mode=None, error_chat_id=chat_id)
-        method = self.service.bot.send_message if message_id is None else self.service.bot.edit_message_text
-        if message_id is not None:
-            params["message_id"] = message_id
-        try:
-            return await self.service.api.call(method, **params)
-        except BadRequest as error:
-            if "BUTTON_USER_PRIVACY_RESTRICTED" not in str(error).upper():
-                raise
-            # Telegram can reject ID links, particularly in private chats. Keep the
-            # review controls available and explain why account buttons are missing.
-            ids = [button.text for row in keyboard.inline_keyboard for button in row if button.url]
-            controls = [[button for button in row if not button.url] for row in keyboard.inline_keyboard]
-            params.update(
-                text=escape(text) + "\n\n" + escape(self.t("profile_buttons_unavailable")) + "\n" +
-                     ", ".join(f"<code>{escape(user_id)}</code>" for user_id in ids),
-                reply_markup=InlineKeyboardMarkup([row for row in controls if row]), parse_mode="HTML",
-            )
-            return await self.service.api.call(method, **params)
+        return await self.service.account_links.display(
+            text, keyboard, self.t, chat_id, message_id, refresh=refresh_links,
+        )
 
     def _navigation(self, action, request_id, page, pages):
         buttons = []
@@ -251,7 +233,7 @@ class CoronerProtectionView:
         buttons.extend([
             [self.button("stop_module", "stop"),
              self.button("review_new" if state.blocked else "pause_review", "new")],
-            [self.button("update", "review", request_id, page), self.button("back", "status")],
+            [self.button("update", "refresh_review", request_id, page), self.button("back", "status")],
         ])
         return text, InlineKeyboardMarkup(buttons)
 
@@ -261,7 +243,7 @@ class CoronerProtectionView:
             [self.t("quarantine_count", count=len(ids))], ids, page, 4)
         buttons += self._navigation("quarantine", "-", page, pages)
         buttons.extend([
-            [self.button("update", "quarantine", page=page), self.button("reviews", "review")],
+            [self.button("update", "refresh_quarantine", page=page), self.button("reviews", "review")],
             [self.button("stop_module", "stop"), self.button("back", "status")],
         ])
         return text, InlineKeyboardMarkup(buttons)

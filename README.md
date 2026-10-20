@@ -112,7 +112,8 @@ Administrator commands:
   progress, and historical minimum/maximum/mean; also available through **Detectors**.
 - `/coroner quarantine`: Browse compact pages of account URL buttons that open accounts
   directly. Pages fill a 100-button budget including navigation and controls. Telegram
-  privacy restrictions are reported explicitly, with copyable IDs as a fallback.
+  privacy restrictions are isolated per account in the background: working buttons stay
+  available, and only rejected IDs are shown for copying. Update retries the current page.
 - `/coroner review`: Show snapshot statistics and accounts together. Confirm the whole
   snapshot or stop Coroner if detection is wrong. Also available from service notifications.
 - `/coroner acknowledge`: Release a safety incident after its quarantine is empty and
