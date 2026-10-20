@@ -121,7 +121,7 @@
   "coroner_operation_get_chat": "confirm the profile",
   "coroner_operation_get_chat_member_count": "get the member count",
   "coroner_operation_get_chat_administrators": "verify administrator access",
-  "coroner_operation_unban_chat_member": "remove the account",
+  "coroner_operation_ban_chat_member": "permanently ban the account",
   "coroner_operation_send_message": "send the status",
   "coroner_operation_edit_message_text": "update the status",
   "coroner_operation_answer_callback_query": "acknowledge the button",

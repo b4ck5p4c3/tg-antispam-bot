@@ -162,7 +162,7 @@ class CoronerService:
 
     def _api_error(self, chat_id, operation, params, error, background):
         user_id = params.get("user_id")
-        if (background and operation in ("get_chat_member", "unban_chat_member")
+        if (background and operation in ("get_chat_member", "ban_chat_member")
                 and user_id is not None and user_id != self.config.reference_user_id
                 and CoronerApi.is_invalid_participant(error)):
             self._exclude_user(user_id)
@@ -709,8 +709,8 @@ class CoronerService:
             if not self.protection.permitted(candidate, job.chat_id, row.generation):
                 raise CoronerInterrupted()
         event_version = (row.last_event_at, row.last_update_id)
-        # Re-read membership after confirmation and the reference check. Never
-        # intentionally undo an existing moderation ban or demote administrators.
+        # Re-read membership after confirmation and the reference check;
+        # skip existing bans and protect administrators.
         member = await self.api.call(
             self.bot.get_chat_member, chat_id=job.chat_id, user_id=job.user_id,
             error_chat_id=job.chat_id, background=True, priority=10, guard=guard,
@@ -749,17 +749,17 @@ class CoronerService:
             return
         dispatched = False
 
-        @wraps(self.bot.unban_chat_member)
+        @wraps(self.bot.ban_chat_member)
         async def remove(**params):
             nonlocal dispatched
             dispatched = True
-            return await self.bot.unban_chat_member(**params)
+            return await self.bot.ban_chat_member(**params)
 
         try:
             if self.config.dry_run:
                 removal_guard()
                 reservation.state = "completed"
-                self.logger.info("CORONER dry_run: would remove user %s from chat %s; grade=%s source=%s operation=%s",
+                self.logger.info("CORONER dry_run: would permanently ban user %s from chat %s; grade=%s source=%s operation=%s",
                                  job.user_id, job.chat_id, grade, job.source, reservation.id)
                 self.protection.finish_target(job.user_id, job.chat_id)
                 self._complete_check(job, row)
@@ -773,7 +773,7 @@ class CoronerService:
             # catches received membership events before the request is sent.
             result = await self.api.call(
                 remove, chat_id=job.chat_id, user_id=job.user_id,
-                only_if_banned=False, error_chat_id=job.chat_id, background=True,
+                until_date=0, error_chat_id=job.chat_id, background=True,
                 priority=10, guard=removal_guard,
             )
             if result is not True:
@@ -803,12 +803,12 @@ class CoronerService:
             ))
         if row.generation == job.generation:
             row.active = False
-            row.status = "left"
+            row.status = "kicked"
         self._finish_job(job)
         self.protection.finish_target(job.user_id, job.chat_id)
         self._changed()
         await self.save(force=True)
-        self.logger.info("CORONER removed user %s from chat %s; grade=%s operation=%s",
+        self.logger.info("CORONER permanently banned user %s from chat %s; grade=%s operation=%s",
                          job.user_id, job.chat_id, grade, job.id)
 
     async def authorized(self, user_id, chat_id):

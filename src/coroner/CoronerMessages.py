@@ -64,7 +64,7 @@ CORONER_MESSAGES = {
     "operation_get_chat": "confirm the profile",
     "operation_get_chat_member_count": "get the member count",
     "operation_get_chat_administrators": "verify administrator access",
-    "operation_unban_chat_member": "remove the account",
+    "operation_ban_chat_member": "permanently ban the account",
     "operation_send_message": "send the status",
     "operation_edit_message_text": "update the status",
     "operation_answer_callback_query": "acknowledge the button",

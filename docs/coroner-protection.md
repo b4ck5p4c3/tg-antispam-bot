@@ -119,7 +119,7 @@ period whose reservation data was discarded, automatic removals block for insuff
 budget history. Budget evidence is never replaced with invented zero counts.
 
 Dry run uses the same quarantine, checks, incidents and virtual reservations, and logs
-intended removals. It sends no kick requests and adds no actual removal-history entries.
+intended permanent bans. It sends no ban requests and adds no actual removal-history entries.
 Virtual reservations constrain dry runs; switching to real mode does not charge virtual
 operations against the actual budget.
 

@@ -137,7 +137,7 @@ class Locale(BaseModel):
     coroner_operation_get_chat: str = "confirm the profile"
     coroner_operation_get_chat_member_count: str = "get the member count"
     coroner_operation_get_chat_administrators: str = "verify administrator access"
-    coroner_operation_unban_chat_member: str = "remove the account"
+    coroner_operation_ban_chat_member: str = "permanently ban the account"
     coroner_operation_send_message: str = "send the status"
     coroner_operation_edit_message_text: str = "update the status"
     coroner_operation_answer_callback_query: str = "acknowledge the button"

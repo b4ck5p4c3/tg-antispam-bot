@@ -183,10 +183,9 @@ importing. The chat must already be enabled with `/moderate`; import does not st
 An account is a removal candidate only when its returned first name is exactly `""`.
 Invisible characters remain nonempty. Candidates require confirmation via `getChat`,
 a configurable quarantine (**60 minutes** by default), a live reference check, and a
-final membership check. Removal kicks the current member
-without leaving a permanent ban; previously banned users and administrators are not removed.
-Telegram provides no atomic conditional kick: a ban made externally between the final
-membership check and the kick cannot be completely ruled out.
+final membership check. Confirmed removal permanently bans the current member with
+`banChatMember(until_date=0)`. Coroner sends no subsequent unban or permission-restoration
+request. Previously banned users and administrators are skipped.
 
 `PARTICIPANT_ID_INVALID` during a participant check or removal excludes that user
 globally from Coroner's roster, queue and quarantine. The exclusion persists in
@@ -202,13 +201,13 @@ deleted sets `error`, emits a `CRITICAL` log, and blocks work until an explicit 
 until verification succeeds. Restarting or changing the reference does not clear an emergency.
 
 With `dry_run: true`, the same checks and safeguards run, but removal only writes a
-`CORONER dry_run: would remove ...` log. Members remain in the roster, checks are rescheduled,
-and actual removal statistics stay unchanged. With `false` (the default), confirmed kicks
+`CORONER dry_run: would permanently ban ...` log. Members remain in the roster, checks are rescheduled,
+and actual removal statistics stay unchanged. With `false` (the default), confirmed bans
 are enabled only after explicitly starting the module.
 
 `coroner_state.json` stores the per-chat roster, global user ages and first-chat IDs,
 queue timestamps, control state and actual removal history. Both JSON files use
-atomic replacement. An interrupted kick whose
+atomic replacement. An interrupted ban whose
 outcome cannot be confirmed is not counted as successful. Status errors remain in memory
 only, retain at most five entries across the module with chat context, expire seven
 days after their last occurrence, and are lost on process restart;
