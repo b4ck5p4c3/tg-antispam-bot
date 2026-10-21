@@ -2,8 +2,8 @@
 
 Coroner has one reference account. Confirmed deletion candidates enter a persisted,
 user-wide quarantine before any removal. The default delay is 60 minutes. A candidate
-stores membership generations for every target chat, so approval cannot silently apply
-to a later rejoin or another chat. Accounts are shown as inline URL buttons using
+stores membership generations for every target chat, so a stale removal cannot apply
+to a later rejoin. Accounts are shown as inline URL buttons using
 `tg://user?id=...`; tapping one opens that account directly, without an intermediate
 bot card or selection step. Telegram can reject these buttons because of account privacy
 restrictions, especially in private chats. A rejected keyboard is split into groups
@@ -36,7 +36,7 @@ See [Telegram's linking restrictions](https://core.telegram.org/bots/api#inlinek
   as confirmed deletions.
 - Candidate activity: the first actual new message sent by a candidate after detection
   cancels that candidate, starts its cooldown, and blocks all automatic quarantine
-  releases. A new contradiction invalidates existing approval grants immediately.
+  releases. A new contradiction revokes approval for the activity rule immediately.
   Forwarded attribution, service join messages and edits of older messages do not
   provide this activity evidence.
 
@@ -51,7 +51,7 @@ removal budgets or incidents.
 
 ## Manual review and notifications
 
-An anomaly latches a module-wide removal block. The module may still report `running`:
+An unapproved anomaly creates a module-wide removal block until it normalizes or is approved. The module may still report `running`:
 ordinary checks and observation continue; **Protection: blocked** reports the independent
 removal gate. `/coroner stop` still stops all profile checks, including approved work.
 A reference failure separately puts the module in `error` and requires a successful
@@ -64,29 +64,36 @@ rights in every moderated chat. The module edits its existing review notificatio
 configured interval. Every notification, authorization lookup and UI operation shares
 Coroner's Telegram RPM budget. Failed notification delivery does not release protection.
 
-`/coroner review` and service notifications show snapshot statistics and account buttons
-together. Quarantine pages show only the count, page number and account buttons. IDs are
-button labels, arranged in three columns by default. Each page fills the configured
-100-button budget after reserving its own controls and Previous/Next buttons. Settings
-`account_links_per_page` and `account_links_per_row` control density; the old card-based
-`review_page_size` setting is retired automatically.
-There are two decisions: **Confirm all accounts** approves the entire snapshot;
-**Stop Coroner** stops all profile checks and removals until a manual start. Review is
-for deciding whether detection is working correctly. There is no account selection,
-partial approval, rejection or per-account decision. Old selection callbacks cannot
-approve anything, and stored selections are ignored when loading older JSON state.
-A new snapshot supersedes a pending one. New candidates or new memberships do not gain
-permission from an earlier snapshot. A fresh incident invalidates previous grants.
-Approval expires after the configured lifetime and never shortens the quarantine delay.
-Outside an incident, **Pause removals and review** explicitly latches the removal gate
-before creating a manual snapshot. Merely browsing the quarantine does not pause it.
+`/coroner review` and service notifications show the current quarantine statistics and
+account buttons together. Quarantine pages show only the count, page number and account
+buttons. IDs are labels, arranged in three columns by default. Pages fill the configured
+100-button budget after reserving controls and Previous/Next buttons.
+`account_links_per_page` and `account_links_per_row` control density.
 
-If accounts were added after a decision, create a new snapshot to review them. Candidates
-confirmed alive return to ordinary monitoring with a configurable cooldown
-against immediate recreation. After quarantine is empty and current detector conditions
-have cleared, `/coroner acknowledge` explicitly releases the safety incident. Start,
-stop, reference changes, expiry of temporary errors and process restarts never release it.
-A budget violation still blocks the next deletion even after an acknowledgement.
+**Confirm all accounts** is always available, including when the quarantine is empty.
+It approves the anomaly parameters currently exceeded, rather than a saved list of users.
+New candidates are covered while the same rules remain continuously triggered. Each
+permission is removed as soon as its parameter normalizes or its sample becomes
+insufficient. Another breach of that rule requires confirmation again. An unrelated
+newly triggered rule blocks removals independently; it does not revoke permission for
+rules that remain continuously exceeded. Changing a rule's window, threshold or minimum
+sample also requires new confirmation. Approvals persist across restarts while their
+conditions remain active; there is no fixed approval lifetime.
+
+There are no review snapshots, per-account approvals, selections or partial decisions.
+Review always shows the live quarantine. **Stop Coroner** stops all checks until a manual
+start; confirmation never starts a stopped or emergency-stopped module, shortens quarantine,
+or skips reference/member-count checks and removal budgets. Percentage budgets have their
+own explicit two-hour bypass, described below. Old snapshot navigation opens the live
+review; an old Confirm button approves the currently triggered anomaly rules. Historical
+account approvals are discarded on upgrade rather than expanded to module-wide permission.
+Subscriber notification messages are reused.
+
+Normalized detector reasons are removed from current status, so a historical peak is not
+shown as a current breach. Temporary error history and historical detector statistics are
+preserved. Candidates confirmed alive return to ordinary monitoring with a configurable
+cooldown against immediate recreation. `/coroner acknowledge` can release remaining
+non-detector incidents after the quarantine is empty; it preserves removal budget evidence.
 Safety gates are rechecked immediately before issuing a removal. An already-issued
 Telegram request may still complete after a block; its reservation remains charged.
 
@@ -113,7 +120,7 @@ request is charged conservatively from the time its outcome is received. A defin
 Telegram rejection or a guard cancellation before dispatch releases the reservation.
 A lost response remains charged and creates an incident; a pending reservation found
 after restart becomes uncertain and is charged from recovery time. Member-count failure
-blocks removal. Ordinary snapshot approval does not bypass percentage limits.
+blocks removal. Anomaly approval does not bypass percentage limits.
 
 Administrators can enable a module-wide bypass with `/coroner bypass`, or **Bypass
 removal limits** when a quota incident exists. The configured duration defaults to
@@ -128,8 +135,9 @@ blocks. Other anomaly incidents still require approval; quarantine, reference ch
 member-count verification, retained-history checks and uncertain-removal protection
 remain active. Reservations continue to accumulate during bypass and are checked again
 immediately before dispatch. Expiry or cancellation therefore restores enforcement
-without discarding any usage. Saved quota incidents remain blocked after bypass expiry
-until reviewed or acknowledged under the normal rules.
+without discarding any usage. A quota reason clears once the rolling budget permits the next removal again; fresh
+member counts and all budget rules are still checked before dispatch. Expiry restores
+any quota block whose usage remains over the limit.
 
 Reservations are retained for at least the configured retention, removal statistics
 period and longest budget window. If a later configuration extends a window into a
@@ -144,7 +152,8 @@ operations against the actual budget.
 ## Statistics
 
 `/coroner` and its Update button show the module-wide summary in private chats or
-moderated groups. Detectors, Quarantine and Review removals open dedicated pages.
+moderated groups. Queued checks exclude quarantined users, including their waiting time;
+quarantine size is displayed separately. Detectors, Quarantine and Review removals open dedicated pages.
 All commands and buttons require current administrator rights in every moderated chat.
 
 Detector pages show settings, sample availability, current check counts, raw false and
@@ -153,7 +162,7 @@ progress toward triggering. Candidate rules show current quarantine occupancy an
 daily candidates separately. An insufficient sample disables that rule explicitly;
 other rules and mandatory removal limits continue to apply.
 
-Minimum, maximum and mean are calculated over recorded snapshots in the configured
+Minimum, maximum and mean are calculated over recorded metric samples in the configured
 number of calendar days including today. Percentage means also report the weighted
 `sum(matches) / sum(samples)`. Sampling interval is configurable. Daily compact rollups
 retain ranges and sums rather than every historical point. Missing percentage samples
@@ -163,15 +172,16 @@ Incident trigger values are captured immediately. Views include the live current
 observation in the displayed ranges without changing historical storage.
 
 Additional pages show quarantine readiness and oldest age, cancellations confirmed
-alive, live-message settings, approval expiry and cooldown, budgets and their usage,
+alive, live-message settings, anomaly permissions and cooldown, budgets and their usage,
 and removals for the configured statistics period (7 days by default). Removal
 statistics show unique user counts plus chat-removal counts; percentages use current
 summed chat memberships. The existing 30-day module totals remain available.
 
-Quarantine, review decisions, detector observations, calendar coverage, budget evidence
-and latched reasons live in `coroner_state.json`. Human-readable temporary errors remain
+Quarantine, anomaly permissions, detector observations, calendar coverage, budget evidence
+and protection reasons live in `coroner_state.json`. Human-readable temporary errors remain
 in memory only, at most five for seven days. Latched reasons are separate protection
-state and remain visible even after those temporary errors expire.
+state. Current detector reasons are removed after normalization; temporary error expiry
+does not clear unresolved protection conditions.
 
 ## Configuration
 
@@ -180,15 +190,15 @@ The following `protection` object is added automatically to valid existing
 Legacy `api_errors` settings are discarded automatically. The removed API failure
 detector no longer collects metrics or blocks removals. Existing blocks caused solely
 by that detector are cleared on startup; blocks from other causes are preserved.
-Existing candidate deadlines and approval expiry timestamps retain the values assigned
-when those records were created; duration changes apply to new records.
+Existing candidate deadlines retain the values assigned when created. Obsolete review
+snapshots, per-account grants and the `approval_seconds` / `resolved_request_retention_days`
+configuration settings are removed automatically.
 
 ```json
 {
   "protection": {
     "quarantine_seconds": 3600,
     "recheck_seconds": 300,
-    "approval_seconds": 7200,
     "removal_limit_bypass_seconds": 7200,
     "rejection_cooldown_seconds": 86400,
     "candidate_history_days": 7,
@@ -237,7 +247,6 @@ when those records were created; duration changes apply to new records.
     "account_links_per_row": 3,
     "account_link_retry_seconds": 300,
     "detector_page_size": 3,
-    "resolved_request_retention_days": 30,
     "reservation_retention_days": 30,
     "removal_limits": [
       {

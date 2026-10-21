@@ -96,8 +96,8 @@ Users who never appear in an update cannot be discovered retroactively with the 
 Administrator commands:
 
 - `/coroner`: Show module-wide statistics across all moderated chats, state, dry-run
-  mode, reference account, untracked percentage, grades, queue size/oldest wait,
-  removals in 30 days, and up to five recent errors. Available in a private chat with
+  mode, reference account, untracked percentage, grades, queued checks excluding quarantined
+  users and their oldest wait, removals in 30 days, and up to five recent errors. Available in a private chat with
   the bot or a moderated group. The **Update** button refreshes the same global summary
   by editing the message without clearing errors.
 - `/coroner help`: Show command descriptions. Other subcommands return their own
@@ -114,8 +114,9 @@ Administrator commands:
   directly. Pages fill a 100-button budget including navigation and controls. Telegram
   privacy restrictions are isolated per account in the background: working buttons stay
   available, and only rejected IDs are shown for copying. Update retries the current page.
-- `/coroner review`: Show snapshot statistics and accounts together. Confirm the whole
-  snapshot or stop Coroner if detection is wrong. Also available from service notifications.
+- `/coroner review`: Show current quarantine statistics and account links. **Confirm all accounts**
+  permits currently triggered anomalies until each parameter normalizes; new accounts are covered.
+  The button is always available. **Stop Coroner** stops checks if detection is wrong.
 - `/coroner bypass`: Temporarily bypass removal percentage limits for 2 hours by default;
   `/coroner bypass stop` cancels early. Other protection rules still apply. The deadline
   persists across restarts and is shown in status, review and detector views.
@@ -222,9 +223,12 @@ contradictory profiles, or a new message from a quarantined account. Rules with 
 observations explicitly show **Check disabled: insufficient data**. Quarantine and
 safety incidents persist across restarts; normal checks continue during a safety block.
 Service subscribers with current administrator access to every moderated chat receive
-review notifications. Approval covers the snapshot's exact accounts and memberships;
-it cannot skip quarantine, fresh checks, or removal budgets. A subsequent incident
-invalidates earlier approval grants.
+review notifications. Approval applies to the currently triggered anomaly rules, without
+account snapshots or a fixed expiry. Each permission resets when its parameter normalizes
+(or its sample becomes insufficient); the next breach requires confirmation again. Other
+newly triggered rules require their own confirmation. Quarantine, fresh checks and removal
+budgets still apply. Approvals persist across restarts while their conditions remain active.
+Status values show current detector measurements rather than latched historical spikes.
 
 Removal limits use percentages only: 5% per chat and globally in 10 minutes, and 10%
 in 24 hours by default. Retired absolute count settings are removed automatically.

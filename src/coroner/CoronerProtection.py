@@ -1,3 +1,4 @@
+import json
 import math
 import time
 from datetime import datetime, timedelta
@@ -7,14 +8,19 @@ from telegram.error import TelegramError
 from src.coroner.CoronerApi import CoronerInterrupted
 from src.coroner.CoronerMessages import duration
 from src.coroner.CoronerProtectionModels import (
-    CheckObservation, DayObservation, MetricObservation,
-    QuarantineCandidate, RemovalReservation, ReviewRequest, ReviewTarget, SafetySignal,
+    AnomalyApproval, CheckObservation, DayObservation, MetricObservation,
+    QuarantineCandidate, RemovalReservation, SafetySignal,
     calendar_timezone,
 )
 
 
 class CoronerProtection:
     """Persistent quarantine and safety decisions. Telegram mutations stay in the service."""
+
+    REVIEWABLE_KINDS = frozenset((
+        "false", "candidates", "transitions", "profiles", "activity", "interrupted", "manual",
+        "population", "budget_history",
+    ))
 
     def __init__(self, service):
         self.service = service
@@ -39,24 +45,13 @@ class CoronerProtection:
         # Retire persisted evidence and blocks belonging only to the removed detector.
         if self.state.metrics.pop("api", None) is not None:
             self.changed()
-        if "api" in self.state.active_rule_keys:
-            self.state.active_rule_keys.remove("api")
-            self.changed()
         # Old quota incidents used absolute counts; enforce the current percentages
         # again before the next removal instead of retaining obsolete count caps.
         retired = [key for key, signal in self.state.reasons.items()
                    if key == "api" or (signal.kind == "quota" and signal.unit is None)]
         for key in retired:
             del self.state.reasons[key]
-        if retired:
-            if not self.state.reasons:
-                self.state.blocked = False
-                request = self.state.requests.get(self.state.current_request_id)
-                if request is not None and request.state == "pending":
-                    request.state = "superseded"
-                    request.decided_at = now
-                self.state.current_request_id = None
-            self.changed()
+            self.state.approvals.pop(key, None)
         if self.state.day_timezone is None:
             self.state.day_timezone = self.config.day_timezone
             self.changed()
@@ -77,6 +72,9 @@ class CoronerProtection:
                 entry.at = now
             self.trip(SafetySignal(key="interrupted-removal", kind="interrupted", at=now,
                                    value=len(pending)))
+        self.evaluate(now)
+        # Persist schema migration, including removal of old account review snapshots.
+        self.changed()
 
     def day(self, at):
         return datetime.fromtimestamp(at, calendar_timezone(self.config.day_timezone)).date()
@@ -149,7 +147,9 @@ class CoronerProtection:
         if len(recent) >= self.config.activity_minimum_users:
             self.trip(SafetySignal(key="candidate-activity", kind="activity", at=now,
                                    value=len(recent), threshold=self.config.activity_minimum_users,
-                                   user_id=user_id), new_incident=True)
+                                   user_id=user_id,
+                                   rule=json.dumps([self.config.activity_window_seconds, self.config.activity_minimum_users])),
+                      new_incident=True)
         user = self.service.state.users.get(user_id)
         if user is not None:
             user.last_alive_at = now
@@ -178,11 +178,7 @@ class CoronerProtection:
         if (self.state.quarantine.get(candidate.user_id) is not candidate
                 or candidate.targets.get(chat_id) != generation or now < candidate.ready_at):
             return False
-        return not self.is_blocked(now) or (
-            candidate.approval_epoch == self.state.epoch
-            and candidate.approval_expires_at > now
-            and candidate.approved_targets.get(chat_id) == generation
-        )
+        return not self.is_blocked(now)
 
     def limits_bypassed(self, now=None):
         now = time.time() if now is None else now
@@ -190,12 +186,32 @@ class CoronerProtection:
 
     def blocking_reasons(self, now=None):
         return [signal for signal in self.state.reasons.values()
-                if signal.kind != "quota" or not self.limits_bypassed(now)]
+                if (not self.limits_bypassed(now) if signal.kind == "quota" else not self.is_approved(signal))]
+
+    def is_approved(self, signal):
+        approval = self.state.approvals.get(signal.key)
+        return signal.kind in self.REVIEWABLE_KINDS and approval is not None and approval.rule == signal.rule
+
+    def approval_status(self, t):
+        count = sum(self.is_approved(signal) for signal in self.state.reasons.values())
+        return t("review_permissions", count=count)
 
     def is_blocked(self, now=None):
-        return self.state.blocked and (
-            not self.state.reasons or bool(self.blocking_reasons(now))
-        )
+        return bool(self.blocking_reasons(now))
+
+    def _wake_quarantine(self):
+        for candidate in self.state.quarantine.values():
+            for chat_id, generation in candidate.targets.items():
+                row = self.service.state.participants.get(chat_id, {}).get(candidate.user_id)
+                if (row is None or not row.active or row.generation != generation
+                        or not self.service.bot_state.is_chat_moderated(chat_id)
+                        or not self.permitted(candidate, chat_id, generation)):
+                    continue
+                self.service._enqueue(chat_id, candidate.user_id, row, "manual")
+                job = self.service.state.queue.get(f"{chat_id}:{candidate.user_id}")
+                if job is not None and not job.attempts:
+                    job.not_before = 0
+                    self.changed()
 
     def bypass_status(self, t):
         if not self.limits_bypassed():
@@ -214,11 +230,7 @@ class CoronerProtection:
         )
         self.state.removal_limit_bypass_by = user_id if enabled else None
         if enabled:
-            for job in self.service.state.queue.values():
-                candidate = self.state.quarantine.get(job.user_id)
-                if (candidate is not None and not job.attempts
-                        and self.permitted(candidate, job.chat_id, job.generation)):
-                    job.not_before = 0
+            self._wake_quarantine()
         self.changed()
         if not await self.service.save(force=True):
             self.state.removal_limit_bypass_until, self.state.removal_limit_bypass_by = previous
@@ -233,24 +245,24 @@ class CoronerProtection:
         if candidate is None:
             return
         candidate.targets.pop(chat_id, None)
-        candidate.approved_targets.pop(chat_id, None)
         if not candidate.targets:
             self.state.quarantine.pop(user_id, None)
         self.changed()
 
     def trip(self, signal, *, new_incident=False):
         previous = self.state.reasons.get(signal.key)
-        if previous is not None and self.state.blocked and not new_incident:
-            if previous.value != signal.value or previous.threshold != signal.threshold:
+        if previous is not None and previous.rule == signal.rule and not new_incident:
+            if previous != signal.model_copy(update={"at": previous.at}):
                 signal.at = previous.at
                 self.state.reasons[signal.key] = signal
                 self.changed()
             return
-        self.state.blocked = True
-        self.state.epoch += 1
+        self.state.approvals.pop(signal.key, None)
         self.state.reasons.pop(signal.key, None)
         self.state.reasons[signal.key] = signal
-        self.new_request(signal.at)
+        self.state.notification_version += 1
+        self.state.notification_at = 0
+        self._notification_retry_at = 0
         self.service.logger.critical("CORONER QUARANTINE BLOCKED: %s value=%s threshold=%s chat=%s grade=%s",
                                      signal.kind, signal.value, signal.threshold, signal.chat_id, signal.grade)
         self.service._error(None, "protection:" + signal.key, "safety_blocked",
@@ -270,63 +282,35 @@ class CoronerProtection:
                               value=f"{signal.value:g}", threshold=f"{signal.threshold:g}",
                               scope=str(signal.chat_id) if signal.chat_id is not None else (signal.grade or "ALL"))
 
-    def new_request(self, now=None):
-        now = time.time() if now is None else now
-        old = self.state.requests.get(self.state.current_request_id)
-        if old is not None and old.state == "pending":
-            old.state = "superseded"
-            old.decided_at = now
-        request = ReviewRequest(created_at=now, epoch=self.state.epoch, targets={
-            user_id: ReviewTarget(candidate_id=candidate.id, targets=dict(candidate.targets),
-                                  grade=(self.service._user_grade(user_id, now).name
-                                         if user_id in self.service.state.users else candidate.grade))
-            for user_id, candidate in self.state.quarantine.items() if candidate.targets
-        })
-        if old is not None:
-            request.notifications = dict(old.notifications)
-        self.state.requests[request.id] = request
-        self.state.current_request_id = request.id
-        self.changed()
-        return request
-
-    def approve_request(self, request_id, user_id):
-        request = self.state.requests.get(request_id)
-        if request is None or request.epoch != self.state.epoch or request.state != "pending":
-            return "review_stale"
+    async def approve_anomalies(self, user_id):
+        if not self.service._storage_healthy or not self.service._config_healthy:
+            return "review_failed"
         now = time.time()
-        if not request.targets:
-            return "review_no_accounts"
-        for target, snapshot in request.targets.items():
-            candidate = self.state.quarantine.get(target)
-            if candidate is None or candidate.id != snapshot.candidate_id:
-                continue
-            candidate.approved_targets = {
-                chat: generation for chat, generation in snapshot.targets.items()
-                if candidate.targets.get(chat) == generation
-            }
-            candidate.approval_epoch = self.state.epoch
-            candidate.approval_expires_at = now + self.config.approval_seconds
-            for chat_id, generation in snapshot.targets.items():
-                row = self.service.state.participants.get(chat_id, {}).get(target)
-                if (row is None or not row.active or row.generation != generation
-                        or not self.service.bot_state.is_chat_moderated(chat_id)):
-                    continue
-                self.service._enqueue(chat_id, target, row, "manual")
-                self.service.state.queue[f"{chat_id}:{target}"].not_before = 0
-        request.state = "approved"
-        request.decided_at, request.decided_by = now, user_id
+        self.evaluate(now)
+        previous = dict(self.state.approvals)
+        for signal in self.state.reasons.values():
+            if signal.kind in self.REVIEWABLE_KINDS and not self.is_approved(signal):
+                self.state.approvals[signal.key] = AnomalyApproval(user_id=user_id, at=now, rule=signal.rule)
+        if previous == self.state.approvals:
+            return "review_no_anomalies"
+        self.state.notification_version += 1
+        self._wake_quarantine()
         self.changed()
-        self.service.logger.info("CORONER review %s approved by=%s users=%s", request_id, user_id, list(request.targets))
+        if not await self.service.save(force=True):
+            self.state.approvals = previous
+            self.changed()
+            return "review_failed"
+        self.service.logger.warning("CORONER anomalies approved by=%s rules=%s", user_id, list(self.state.approvals))
         return "review_decided"
 
     def acknowledge(self):
         self.evaluate()
-        if self.state.quarantine or self.state.active_rule_keys:
+        if self.state.quarantine or any(signal.kind in (
+                "false", "transitions", "profiles", "candidates", "activity") for signal in self.state.reasons.values()):
             return "review_cannot_resume"
-        self.state.blocked = False
         self.state.reasons.clear()
-        self.state.epoch += 1
-        self.state.current_request_id = None
+        self.state.approvals.clear()
+        self.state.notification_version += 1
         self.changed()
         return "review_resumed"
 
@@ -407,26 +391,84 @@ class CoronerProtection:
 
     def evaluate(self, now=None):
         now = time.time() if now is None else now
-        active = []
+        was_blocked = self.is_blocked(now)
+        active = set()
         for metric in self.measurements(now):
             if (metric["enabled"] and metric["matches"] >= metric["minimum_matches"]
                     and metric["value"] >= metric["threshold"]):
-                active.append(metric["key"])
+                active.add(metric["key"])
+                rule = json.dumps([metric["window"], metric["threshold"], metric["minimum"],
+                                   metric["minimum_matches"],
+                                   self.day(now).isoformat() if metric["kind"] == "candidates" else None])
                 signal = SafetySignal(key=metric["key"], kind=metric["kind"], at=now,
                                       value=metric["value"], threshold=metric["threshold"],
-                                      chat_id=metric["chat_id"], grade=metric["grade"])
-                if signal.key not in self.state.active_rule_keys and signal.key in self.state.reasons:
-                    # A fresh burst invalidates approvals from a previous burst of the same rule.
-                    self.state.reasons.pop(signal.key)
-                if signal.key not in self.state.active_rule_keys:
+                                      chat_id=metric["chat_id"], grade=metric["grade"], rule=rule)
+                if signal.key not in self.state.reasons:
                     self._sample(metric["key"], metric["value"], now, metric["window"],
                                  samples=metric["samples"], matches=metric["matches"],
                                  percentage=metric["kind"] != "candidates", force=True,
                                  attempts=metric.get("attempts", 0), false_attempts=metric.get("false_attempts", 0))
                 self.trip(signal)
-        if set(active) != set(self.state.active_rule_keys):
-            self.state.active_rule_keys = active
+        activity = len({user for at, user in self.state.activity_conflicts
+                        if at > now - self.config.activity_window_seconds})
+        if activity >= self.config.activity_minimum_users:
+            active.add("candidate-activity")
+            previous = self.state.reasons.get("candidate-activity")
+            self.trip(SafetySignal(key="candidate-activity", kind="activity", at=now,
+                                   value=activity, threshold=self.config.activity_minimum_users,
+                                   user_id=previous.user_id if previous else None,
+                                   rule=json.dumps([self.config.activity_window_seconds, self.config.activity_minimum_users])))
+        for key, signal in list(self.state.reasons.items()):
+            if signal.kind in ("false", "transitions", "profiles", "candidates", "activity") and key not in active:
+                self._resolve(key)
+        if (self.state.populations_chats == sorted(set(self.service.bot_state.moderated_chat_ids))
+                and self.state.populations and all(value > 0 for value in self.state.populations.values())
+                and now - self.state.populations_at < self.config.member_count_cache_seconds):
+            self._resolve("population-unavailable")
+        horizon = max(limit.window_seconds for limit in self.config.removal_limits)
+        if now - horizon >= self.state.reservations_discarded_until:
+            self._resolve("budget-history-unavailable")
+        if not any(entry.state == "uncertain" and entry.at > now - horizon for entry in self.state.reservations):
+            self._resolve("uncertain-removal")
+            self._resolve("interrupted-removal")
+        for key in set(self.state.approvals) - self.state.reasons.keys():
+            del self.state.approvals[key]
             self.changed()
+        self._refresh_quota_reasons(now)
+        if was_blocked and not self.is_blocked(now):
+            self._wake_quarantine()
+
+    def _resolve(self, key):
+        if self.state.reasons.pop(key, None) is not None:
+            self.state.approvals.pop(key, None)
+            self.state.notification_version += 1
+            self.service.logger.info("CORONER protection condition normalized: %s", key)
+            self.changed()
+
+    def _refresh_quota_reasons(self, now):
+        limits = {limit.name: limit for limit in self.config.removal_limits}
+        chats = set(self.service.bot_state.moderated_chat_ids)
+        populations = self.state.populations
+        for key, signal in list(self.state.reasons.items()):
+            if signal.kind != "quota":
+                continue
+            limit = limits.get(key.split(":")[1]) if key.startswith("quota:") else None
+            if limit is None or (signal.chat_id is not None and signal.chat_id not in chats):
+                self._resolve(key)
+                continue
+            # Fresh counts are fetched again by reserve before any actual removal.
+            if set(populations) != chats or not populations or any(value <= 0 for value in populations.values()):
+                continue
+            chat_id = signal.chat_id if signal.chat_id is not None else next(iter(chats))
+            for scope, count, base, percent in self._budget_usage(limit, chat_id, populations, now):
+                if scope != signal.chat_id:
+                    continue
+                if count <= math.floor(base * percent / 100):
+                    self._resolve(key)
+                elif signal.value != 100 * count / base or signal.threshold != percent:
+                    signal.value, signal.threshold = 100 * count / base, percent
+                    self.changed()
+                break
 
     def tick(self, now=None):
         now = time.time() if now is None else now
@@ -472,7 +514,7 @@ class CoronerProtection:
         def size():
             return (len(self.state.checks), len(self.state.activity_conflicts),
                     len(self.state.cancelled_candidates), len(self.state.rejected_until), len(self.state.days),
-                    len(self.state.reservations), len(self.state.requests),
+                    len(self.state.reservations),
                     sum(len(entries) for entries in self.state.metrics.values()))
 
         before = size()
@@ -498,9 +540,6 @@ class CoronerProtection:
             self.state.reservations_discarded_until = max(self.state.reservations_discarded_until, max(discarded))
         self.state.reservations = [entry for entry in self.state.reservations
                                    if entry.at > now - reservation_horizon or entry.state == "pending"]
-        self.state.requests = {key: request for key, request in self.state.requests.items()
-                               if request.state == "pending" or key == self.state.current_request_id
-                               or (request.decided_at or request.created_at) > now - self.config.resolved_request_retention_days * 86400}
         for candidate in list(self.state.quarantine.values()):
             for chat_id, generation in list(candidate.targets.items()):
                 row = self.service.state.participants.get(chat_id, {}).get(candidate.user_id)
@@ -540,23 +579,27 @@ class CoronerProtection:
                                     value=limit.window_seconds)
             if self.limits_bypassed(now):
                 continue
-            entries = [entry for entry in self.state.reservations
-                       if (entry.at > now - limit.window_seconds or entry.state == "pending") and entry.state != "released"
-                       and (not entry.dry_run or self.service.config.dry_run)]
-            local = [entry for entry in entries if entry.chat_id == chat_id]
-            chat_base = min([populations[chat_id]] + [entry.chat_population for entry in local if entry.chat_population > 0])
-            global_base = min([sum(populations.values())] + [entry.global_population for entry in entries if entry.global_population > 0])
-            for scope, records, base, percent in (
-                    (chat_id, local, chat_base, limit.chat_percent),
-                    (None, entries, global_base, limit.global_percent)):
-                count = len(records) + (0 if reservation is not None and any(
-                    entry.id == reservation.id for entry in records
-                ) else 1)
+            for scope, count, base, percent in self._budget_usage(limit, chat_id, populations, now, reservation):
                 allowed = math.floor(base * percent / 100)
                 if count > allowed:
                     return SafetySignal(key=f"quota:{limit.name}:{scope}", kind="quota", at=now,
                                         value=100 * count / base, threshold=percent, chat_id=scope, unit="percent")
         return None
+
+    def _budget_usage(self, limit, chat_id, populations, now, reservation=None):
+        entries = [entry for entry in self.state.reservations
+                   if (entry.at > now - limit.window_seconds or entry.state == "pending") and entry.state != "released"
+                   and (not entry.dry_run or self.service.config.dry_run)]
+        local = [entry for entry in entries if entry.chat_id == chat_id]
+        chat_base = min([populations[chat_id]] + [entry.chat_population for entry in local if entry.chat_population > 0])
+        global_base = min([sum(populations.values())] + [entry.global_population for entry in entries if entry.global_population > 0])
+        for scope, records, base, percent in (
+                (chat_id, local, chat_base, limit.chat_percent),
+                (None, entries, global_base, limit.global_percent)):
+            count = len(records) + (0 if reservation is not None and any(
+                entry.id == reservation.id for entry in records
+            ) else 1)
+            yield scope, count, base, percent
 
     async def reserve(self, job, guard):
         try:
@@ -591,33 +634,26 @@ class CoronerProtection:
         now = time.time()
         if now < self._notification_retry_at:
             return
-        request = self.state.requests.get(self.state.current_request_id)
-        if request is None:
-            request = self.new_request(now)
-        if request.notification_at and now - request.notification_at < self.config.notification_interval_seconds:
+        if self.state.notification_at and now - self.state.notification_at < self.config.notification_interval_seconds:
             return
         self._notification_retry_at = now + self.config.notification_interval_seconds
-        self._notification_task = application.create_task(self.notify(request.id))
+        self._notification_task = application.create_task(self.notify(self.state.notification_version))
 
-    async def notify(self, request_id):
+    async def notify(self, version):
         from src.coroner.CoronerProtectionView import CoronerProtectionView
         from src.util.data.BotEvent import BotEvent
 
-        request = self.state.requests.get(request_id)
-        if request is None:
-            return
         view = CoronerProtectionView(self.service, self.service.locale)
         for subscriber in self.service.bot_state.get_event_subscribers(BotEvent.SERVICE):
             try:
                 if not await self.service.authorized(subscriber, subscriber):
                     continue
-                # A new anomaly may supersede the snapshot while authorization is awaited.
-                if self.state.current_request_id != request_id:
+                if self.state.notification_version != version or not self.is_blocked():
                     return
-                message_id = request.notifications.get(subscriber)
-                message = await view.display("review", request_id, 0, subscriber, message_id=message_id)
+                message_id = self.state.notifications.get(subscriber)
+                message = await view.display("review", 0, subscriber, message_id=message_id)
                 if message_id is None and message is not None:
-                    request.notifications[subscriber] = message.message_id
+                    self.state.notifications[subscriber] = message.message_id
                 self.changed()
                 await self.service.save()
             except CoronerInterrupted:
@@ -626,6 +662,7 @@ class CoronerProtection:
                 pass  # The common API wrapper recorded the notification error.
             except Exception as error:
                 self.service._error(None, "protection-notification", "worker_error", detail=error)
-        request.notification_at = time.time()
-        self.changed()
-        await self.service.save()
+        if self.state.notification_version == version:
+            self.state.notification_at = time.time()
+            self.changed()
+            await self.service.save()

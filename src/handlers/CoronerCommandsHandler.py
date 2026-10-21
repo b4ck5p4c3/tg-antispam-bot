@@ -1,5 +1,3 @@
-import time
-
 from telegram import Chat, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
 from telegram.ext import CallbackContext
@@ -8,7 +6,6 @@ from src.coroner.CoronerApi import CoronerInterrupted
 from src.coroner.CoronerMessages import coroner_text
 from src.coroner.CoronerService import CoronerService
 from src.coroner.CoronerProtectionView import CoronerProtectionKeyboardData, CoronerProtectionView
-from src.coroner.CoronerProtectionModels import SafetySignal
 from src.handlers.ButtonClickHandler import button_click
 from src.telegram.EnrichedUpdate import EnrichedUpdate
 from src.telegram.KeyboardData import KeyboardData
@@ -29,7 +26,7 @@ class CoronerCommandsHandler:
         rows.extend(CoronerProtectionView(self.service, locale).main_buttons())
         return InlineKeyboardMarkup(rows)
 
-    async def _protection_display(self, update, action, request_id="-", page=0,
+    async def _protection_display(self, update, action, page=0,
                                   notice="", *, edit=False, refresh_links=False):
         if action == "detectors":
             try:
@@ -40,7 +37,7 @@ class CoronerCommandsHandler:
                 pass
         view = CoronerProtectionView(self.service, update.locale)
         await view.display(
-            action, request_id, page, update.effective_chat.id, notice=notice,
+            action, page, update.effective_chat.id, notice=notice,
             message_id=update.callback_query.message.message_id if edit else None,
             refresh_links=refresh_links,
         )
@@ -168,7 +165,7 @@ class CoronerCommandsHandler:
                 return
             if update.effective_chat.type != Chat.PRIVATE and not self.service.bot_state.is_chat_moderated(chat_id):
                 return
-            action, request_id, notice = data.action, data.request_id, ""
+            action, notice = data.action, ""
             refresh_links = action in ("refresh_review", "refresh_quarantine")
             if refresh_links:
                 action = action.removeprefix("refresh_")
@@ -176,11 +173,7 @@ class CoronerCommandsHandler:
                 await self._display(update, edit=True)
                 return
             if action == "new":
-                if not self.service.protection.is_blocked():
-                    self.service.protection.trip(SafetySignal(key="manual-review", kind="manual", at=time.time()))
-                    request_id = self.service.state.protection.current_request_id
-                else:
-                    request_id = self.service.protection.new_request().id
+                # Retired snapshot buttons simply open the live quarantine.
                 action = "review"
             elif action in ("bypass_on", "bypass_off"):
                 result = await self.service.protection.bypass_limits(
@@ -197,14 +190,14 @@ class CoronerCommandsHandler:
                 notice = coroner_text(update.locale, self.service.protection.acknowledge())
                 action = "review"
             elif action == "approve_all":
-                result = self.service.protection.approve_request(request_id, update.effective_user.id)
+                result = await self.service.protection.approve_anomalies(update.effective_user.id)
                 notice = coroner_text(update.locale, result)
                 action = "review"
             elif action not in ("review", "quarantine", "detectors"):
                 notice = coroner_text(update.locale, "review_stale")
                 action = "review"
             await self.service.save(force=True)
-            await self._protection_display(update, action, request_id, data.page, notice,
+            await self._protection_display(update, action, data.page, notice,
                                            edit=True, refresh_links=refresh_links)
         except (TelegramError, CoronerInterrupted):
             pass

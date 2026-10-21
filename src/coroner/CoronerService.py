@@ -370,16 +370,8 @@ class CoronerService:
             if user.first_chat_id == old_id:
                 user.first_chat_id = new_id
         for candidate in self.state.protection.quarantine.values():
-            for targets in (candidate.targets, candidate.approved_targets):
-                if old_id in targets:
-                    targets[new_id] = targets.pop(old_id)
-        # Previously approved chat IDs never silently expand to a new destination.
-        for request in self.state.protection.requests.values():
-            if request.state == "pending":
-                request.state = "superseded"
-                request.decided_at = time.time()
-        self.state.protection.epoch += 1
-        self.state.protection.current_request_id = None
+            if old_id in candidate.targets:
+                candidate.targets[new_id] = candidate.targets.pop(old_id)
         for reservation in self.state.protection.reservations:
             if reservation.chat_id == old_id:
                 reservation.chat_id = new_id
@@ -849,6 +841,7 @@ class CoronerService:
             except Exception:
                 pass
         now = time.time()
+        self.protection.evaluate(now)
         monitored = set()
         observed_total = member_total = 0
         complete_counts = bool(chat_ids)
@@ -869,7 +862,8 @@ class CoronerService:
             monitored.update(user_id for user_id in active if user_id != self.bot.id)
         untracked = (f"{100 * (member_total - observed_total) / member_total:.2f}%"
                      if complete_counts else t("unavailable"))
-        jobs = [job for job in self.state.queue.values() if job.chat_id in chat_ids]
+        jobs = [job for job in self.state.queue.values()
+                if job.chat_id in chat_ids and job.user_id not in self.state.protection.quarantine]
         counts = {grade.name: 0 for grade in self.config.grades}
         removed = dict.fromkeys(counts, 0)
         for user_id in monitored:
@@ -884,6 +878,7 @@ class CoronerService:
         protection = self.state.protection
         lines.append(t("protection_status", status=t("protection_blocked" if self.protection.is_blocked() else "protection_clear")))
         lines.append(self.protection.bypass_status(t))
+        lines.append(self.protection.approval_status(t))
         lines.append(t("quarantine_count", count=len(protection.quarantine)))
         if self.protection.is_blocked():
             for signal in self.protection.blocking_reasons()[-2:]:

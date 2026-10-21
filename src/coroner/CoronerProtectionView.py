@@ -13,15 +13,16 @@ from src.telegram.KeyboardData import KeyboardData
 class CoronerProtectionKeyboardData(KeyboardData):
     key_id: str = "CORONER_UI"
     action: str
-    request_id: str = "-"
     page: int = 0
 
     @model_validator(mode="before")
     @classmethod
     def parse_from_string(cls, value):
-        # Navigation in messages sent before account selection was removed still works.
-        if isinstance(value, str) and len(value.split(cls.SEP)) == 5:
-            value = value.rsplit(cls.SEP, 1)[0]
+        # Keep navigation and confirmation in already-sent review messages working.
+        if isinstance(value, str):
+            parts = value.split(cls.SEP)
+            if len(parts) in (4, 5):
+                value = cls.SEP.join([parts[0], parts[1], parts[3]])
         return super().parse_from_string(value)
 
 
@@ -34,15 +35,15 @@ class CoronerProtectionView:
     def t(self, key, **values):
         return coroner_text(self.locale, key, **values)
 
-    def button(self, key, action, request_id="-", page=0, **values):
-        data = CoronerProtectionKeyboardData(action=action, request_id=request_id, page=page)
+    def button(self, key, action, page=0, **values):
+        data = CoronerProtectionKeyboardData(action=action, page=page)
         return InlineKeyboardButton(self.t(key, **values), callback_data=data.model_dump())
 
-    def bypass_button(self, request_id="-", page=0):
+    def bypass_button(self, page=0):
         if self.protection.limits_bypassed():
-            return self.button("limit_bypass_cancel", "bypass_off", request_id, page)
+            return self.button("limit_bypass_cancel", "bypass_off", page)
         if any(signal.kind == "quota" for signal in self.protection.state.reasons.values()):
-            return self.button("limit_bypass_button", "bypass_on", request_id, page,
+            return self.button("limit_bypass_button", "bypass_on", page,
                                duration=duration(self.protection.config.removal_limit_bypass_seconds))
         return None
 
@@ -54,21 +55,22 @@ class CoronerProtectionView:
             rows.append([bypass])
         return rows
 
-    async def display(self, action, request_id, page, chat_id, *, notice="", message_id=None,
+    async def display(self, action, page, chat_id, *, notice="", message_id=None,
                       refresh_links=False):
-        text, keyboard = self.render(action, request_id, page)
+        self.protection.evaluate()
+        text, keyboard = self.render(action, page)
         if notice:
             text = notice + "\n\n" + text
         return await self.service.account_links.display(
             text, keyboard, self.t, chat_id, message_id, refresh=refresh_links,
         )
 
-    def _navigation(self, action, request_id, page, pages):
+    def _navigation(self, action, page, pages):
         buttons = []
         if page:
-            buttons.append(self.button("previous", action, request_id, page - 1))
+            buttons.append(self.button("previous", action, page - 1))
         if page + 1 < pages:
-            buttons.append(self.button("next", action, request_id, page + 1))
+            buttons.append(self.button("next", action, page + 1))
         return [buttons] if buttons else []
 
     @staticmethod
@@ -148,7 +150,7 @@ class CoronerProtectionView:
         conflicts = len({user for at, user in state.activity_conflicts if at > now - cfg.activity_window_seconds})
         cards.append(self.t("activity_settings", count=conflicts, minimum=cfg.activity_minimum_users,
                             period=duration(cfg.activity_window_seconds), recent=duration(cfg.recent_alive_seconds),
-                            approval=duration(cfg.approval_seconds), cooldown=duration(cfg.rejection_cooldown_seconds),
+                            cooldown=duration(cfg.rejection_cooldown_seconds),
                             sampling=duration(cfg.metric_sample_seconds), timezone=cfg.day_timezone,
                             coverage=cfg.minimum_day_coverage_percent) + "\n" + self.t(
                                 "count_history", history=self._history_stats(self._history_with_current(
@@ -179,9 +181,10 @@ class CoronerProtectionView:
         text = self.t("detector_heading") + "\n" + self.t("protection_status", status=self.t(
             "protection_blocked" if self.protection.is_blocked() else "protection_clear")) + "\n"
         text += self.protection.bypass_status(self.t) + "\n"
+        text += self.protection.approval_status(self.t) + "\n"
         text += self.t("page", page=page + 1, pages=pages) + "\n\n"
         text += "\n\n".join(cards[page * cfg.detector_page_size:(page + 1) * cfg.detector_page_size])
-        buttons = self._navigation("detectors", "-", page, pages)
+        buttons = self._navigation("detectors", page, pages)
         bypass = self.bypass_button()
         if bypass is not None:
             buttons.append([bypass])
@@ -208,51 +211,37 @@ class CoronerProtectionView:
         rows = [buttons[index:index + columns] for index in range(0, len(buttons), columns)]
         return "\n".join(lines), rows, page, len(pages)
 
-    def _review(self, request_id, page):
+    def _review(self, page):
         state = self.protection.state
-        request = state.requests.get(request_id)
         lines = [self.t("review_heading"), self.t("status", status=self.service.state.status),
                  self.t("protection_status", status=self.t(
                      "protection_blocked" if self.protection.is_blocked() else "protection_clear")),
-                 self.protection.bypass_status(self.t)]
-        lines.extend(shorten(self.protection.reason_text(signal), 180)
-                     for signal in self.protection.blocking_reasons()[-2:])
-        if request is None:
-            lines.append(self.t("review_none"))
-        else:
-            lines.extend([
-                self.t("review_identity", request_id=request.id, status=request.state,
-                       age=duration(time.time() - request.created_at)),
-                self.t("review_counts", users=len(request.targets),
-                       targets=sum(len(target.targets) for target in request.targets.values()),
-                       current=len(state.quarantine)),
-            ])
-            grades = dict.fromkeys(("G1", "G2", "G3", "G4"), 0)
-            chats = {}
-            for user_id, snapshot in request.targets.items():
-                candidate = state.quarantine.get(user_id)
-                grade = snapshot.grade or (candidate.grade if candidate else None)
-                if grade in grades:
-                    grades[grade] += 1
-                for chat_id in snapshot.targets:
-                    chats[chat_id] = chats.get(chat_id, 0) + 1
-            lines.append(", ".join(f"{grade}: {count}" for grade, count in grades.items()))
-            lines.append(self.t("review_chat_distribution") + " " + shorten(
-                ", ".join(f"{chat_id}: {count}" for chat_id, count in sorted(chats.items())), 300))
-        ids = sorted(request.targets) if request is not None else []
-        can_approve = (request is not None and request.targets and request.state == "pending"
-                       and request.epoch == state.epoch)
-        bypass = self.bypass_button(request_id, page)
-        text, buttons, page, pages = self._account_page(lines, ids, page, 4 + bool(can_approve) + (bypass is not None))
-        buttons += self._navigation("review", request_id, page, pages)
-        if can_approve:
-            buttons.append([self.button("approve_all", "approve_all", request.id)])
+                 self.protection.bypass_status(self.t), self.protection.approval_status(self.t)]
+        for signal in list(state.reasons.values())[-4:]:
+            text = shorten(self.protection.reason_text(signal), 180)
+            lines.append(self.t("review_allowed_reason", reason=text) if self.protection.is_approved(signal) else text)
+        ids = sorted(state.quarantine)
+        lines.append(self.t("review_counts", users=len(ids),
+                            targets=sum(len(candidate.targets) for candidate in state.quarantine.values())))
+        grades = dict.fromkeys(("G1", "G2", "G3", "G4"), 0)
+        chats = {}
+        for user_id, candidate in state.quarantine.items():
+            grade = self.service._user_grade(user_id, time.time()).name
+            grades[grade] += 1
+            for chat_id in candidate.targets:
+                chats[chat_id] = chats.get(chat_id, 0) + 1
+        lines.append(", ".join(f"{grade}: {count}" for grade, count in grades.items()))
+        lines.append(self.t("review_chat_distribution") + " " + shorten(
+            ", ".join(f"{chat_id}: {count}" for chat_id, count in sorted(chats.items())), 300))
+        bypass = self.bypass_button(page)
+        text, buttons, page, pages = self._account_page(lines, ids, page, 4 + (bypass is not None))
+        buttons += self._navigation("review", page, pages)
+        buttons.append([self.button("approve_all", "approve_all")])
         if bypass is not None:
             buttons.append([bypass])
         buttons.extend([
-            [self.button("stop_module", "stop"),
-             self.button("review_new" if self.protection.is_blocked() else "pause_review", "new")],
-            [self.button("update", "refresh_review", request_id, page), self.button("back", "status")],
+            [self.button("stop_module", "stop")],
+            [self.button("update", "refresh_review", page), self.button("back", "status")],
         ])
         return text, InlineKeyboardMarkup(buttons)
 
@@ -260,18 +249,16 @@ class CoronerProtectionView:
         ids = sorted(self.protection.state.quarantine)
         text, buttons, page, pages = self._account_page(
             [self.t("quarantine_count", count=len(ids))], ids, page, 4)
-        buttons += self._navigation("quarantine", "-", page, pages)
+        buttons += self._navigation("quarantine", page, pages)
         buttons.extend([
             [self.button("update", "refresh_quarantine", page=page), self.button("reviews", "review")],
             [self.button("stop_module", "stop"), self.button("back", "status")],
         ])
         return text, InlineKeyboardMarkup(buttons)
 
-    def render(self, action, request_id="-", page=0):
-        if request_id == "-":
-            request_id = self.protection.state.current_request_id or "-"
+    def render(self, action, page=0):
         if action == "detectors":
             return self._detectors(page)
         if action == "quarantine":
             return self._quarantine(page)
-        return self._review(request_id, page)
+        return self._review(page)

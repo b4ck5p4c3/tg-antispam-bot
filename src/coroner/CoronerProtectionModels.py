@@ -39,7 +39,6 @@ class RemovalLimit(ProtectionModel):
 class ProtectionConfig(ProtectionModel):
     quarantine_seconds: int = Field(default=3600, ge=0, strict=True)
     recheck_seconds: int = Field(default=300, gt=0, strict=True)
-    approval_seconds: int = Field(default=7200, gt=0, strict=True)
     removal_limit_bypass_seconds: int = Field(default=7200, gt=0, strict=True)
     rejection_cooldown_seconds: int = Field(default=86400, gt=0, strict=True)
     candidate_history_days: int = Field(default=7, gt=0, le=90, strict=True)
@@ -71,7 +70,6 @@ class ProtectionConfig(ProtectionModel):
     account_links_per_row: int = Field(default=3, gt=0, le=8, strict=True)
     account_link_retry_seconds: int = Field(default=300, gt=0, strict=True)
     detector_page_size: int = Field(default=3, gt=0, le=3, strict=True)
-    resolved_request_retention_days: int = Field(default=30, gt=0, le=365, strict=True)
     reservation_retention_days: int = Field(default=30, gt=0, le=365, strict=True)
     removal_limits: list[RemovalLimit] = Field(default_factory=lambda: [
         RemovalLimit(name="short", window_seconds=600, chat_percent=5, global_percent=5),
@@ -81,9 +79,11 @@ class ProtectionConfig(ProtectionModel):
     @model_validator(mode="before")
     @classmethod
     def discard_removed_settings(cls, values):
-        # Retire the removed API detector and the old account-card page size.
+        # Retire settings for removed detectors, account cards and review snapshots.
         if isinstance(values, dict):
-            return {key: value for key, value in values.items() if key not in ("api_errors", "review_page_size")}
+            return {key: value for key, value in values.items() if key not in (
+                "api_errors", "review_page_size", "approval_seconds", "resolved_request_retention_days",
+            )}
         return values
 
     @model_validator(mode="after")
@@ -102,16 +102,11 @@ class ProtectionConfig(ProtectionModel):
 
 
 class QuarantineCandidate(BaseModel):
-    id: str = Field(default_factory=lambda: uuid4().hex[:12])
     user_id: int
     grade: str
     detected_at: float
     ready_at: float
     targets: dict[int, int] = Field(default_factory=dict)
-    next_recheck_at: float = 0
-    approved_targets: dict[int, int] = Field(default_factory=dict)
-    approval_epoch: int = -1
-    approval_expires_at: float = 0
 
 
 class CheckObservation(BaseModel):
@@ -181,24 +176,13 @@ class SafetySignal(BaseModel):
     grade: str | None = None
     user_id: int | None = None
     unit: Literal["percent"] | None = None
+    rule: str = ""
 
 
-class ReviewTarget(BaseModel):
-    candidate_id: str
-    targets: dict[int, int]
-    grade: str | None = None
-
-
-class ReviewRequest(BaseModel):
-    id: str = Field(default_factory=lambda: uuid4().hex[:12])
-    created_at: float
-    epoch: int
-    targets: dict[int, ReviewTarget] = Field(default_factory=dict)
-    state: Literal["pending", "approved", "rejected", "superseded"] = "pending"
-    decided_by: int | None = None
-    decided_at: float | None = None
-    notifications: dict[int, int] = Field(default_factory=dict)
-    notification_at: float = 0
+class AnomalyApproval(BaseModel):
+    user_id: int
+    at: float
+    rule: str = ""
 
 
 class RemovalReservation(BaseModel):
@@ -221,16 +205,30 @@ class ProtectionState(BaseModel):
     rejected_until: dict[int, float] = Field(default_factory=dict)
     cancelled_candidates: list[tuple[float, int]] = Field(default_factory=list)
     activity_conflicts: list[tuple[float, int]] = Field(default_factory=list)
-    blocked: bool = False
     removal_limit_bypass_until: float = Field(default=0, ge=0, allow_inf_nan=False)
     removal_limit_bypass_by: int | None = Field(default=None, gt=0, strict=True)
-    epoch: int = 0
     reasons: dict[str, SafetySignal] = Field(default_factory=dict)
-    active_rule_keys: list[str] = Field(default_factory=list)
-    requests: dict[str, ReviewRequest] = Field(default_factory=dict)
-    current_request_id: str | None = None
+    approvals: dict[str, AnomalyApproval] = Field(default_factory=dict)
+    notifications: dict[int, int] = Field(default_factory=dict)
+    notification_at: float = 0
+    notification_version: int = 0
     reservations: list[RemovalReservation] = Field(default_factory=list)
     populations: dict[int, int] = Field(default_factory=dict)
     populations_at: float = 0
     populations_chats: list[int] = Field(default_factory=list)
     reservations_discarded_until: float = 0
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_review_state(cls, values):
+        if not isinstance(values, dict):
+            return values
+        values = dict(values)
+        # Reuse the existing subscriber messages, without expanding old account approvals.
+        requests = values.get("requests", {})
+        request = requests.get(values.get("current_request_id"), {})
+        if "notifications" not in values:
+            values["notifications"] = request.get("notifications", {})
+        if values.get("blocked") and not values.get("reasons"):
+            values["reasons"] = {"manual-review": dict(key="manual-review", kind="manual", at=0)}
+        return values
