@@ -25,16 +25,22 @@ class RateRule(ProtectionModel):
 class RemovalLimit(ProtectionModel):
     name: str = Field(min_length=1, max_length=32, pattern=r"^[A-Za-z0-9_-]+$")
     window_seconds: int = Field(gt=0, strict=True)
-    chat_count: int = Field(gt=0, strict=True)
-    global_count: int = Field(gt=0, strict=True)
     chat_percent: float = Field(gt=0, le=100)
     global_percent: float = Field(gt=0, le=100)
+
+    @model_validator(mode="before")
+    @classmethod
+    def discard_absolute_limits(cls, values):
+        if isinstance(values, dict):
+            return {key: value for key, value in values.items() if key not in ("chat_count", "global_count")}
+        return values
 
 
 class ProtectionConfig(ProtectionModel):
     quarantine_seconds: int = Field(default=3600, ge=0, strict=True)
     recheck_seconds: int = Field(default=300, gt=0, strict=True)
     approval_seconds: int = Field(default=7200, gt=0, strict=True)
+    removal_limit_bypass_seconds: int = Field(default=7200, gt=0, strict=True)
     rejection_cooldown_seconds: int = Field(default=86400, gt=0, strict=True)
     candidate_history_days: int = Field(default=7, gt=0, le=90, strict=True)
     candidate_coefficients: dict[str, float] = Field(default_factory=lambda: dict.fromkeys(
@@ -68,10 +74,8 @@ class ProtectionConfig(ProtectionModel):
     resolved_request_retention_days: int = Field(default=30, gt=0, le=365, strict=True)
     reservation_retention_days: int = Field(default=30, gt=0, le=365, strict=True)
     removal_limits: list[RemovalLimit] = Field(default_factory=lambda: [
-        RemovalLimit(name="short", window_seconds=600, chat_count=2, global_count=5,
-                     chat_percent=5, global_percent=5),
-        RemovalLimit(name="daily", window_seconds=86400, chat_count=5, global_count=10,
-                     chat_percent=10, global_percent=10),
+        RemovalLimit(name="short", window_seconds=600, chat_percent=5, global_percent=5),
+        RemovalLimit(name="daily", window_seconds=86400, chat_percent=10, global_percent=10),
     ])
 
     @model_validator(mode="before")
@@ -176,6 +180,7 @@ class SafetySignal(BaseModel):
     chat_id: int | None = None
     grade: str | None = None
     user_id: int | None = None
+    unit: Literal["percent"] | None = None
 
 
 class ReviewTarget(BaseModel):
@@ -217,6 +222,8 @@ class ProtectionState(BaseModel):
     cancelled_candidates: list[tuple[float, int]] = Field(default_factory=list)
     activity_conflicts: list[tuple[float, int]] = Field(default_factory=list)
     blocked: bool = False
+    removal_limit_bypass_until: float = Field(default=0, ge=0, allow_inf_nan=False)
+    removal_limit_bypass_by: int | None = Field(default=None, gt=0, strict=True)
     epoch: int = 0
     reasons: dict[str, SafetySignal] = Field(default_factory=dict)
     active_rule_keys: list[str] = Field(default_factory=list)

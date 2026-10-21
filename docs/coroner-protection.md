@@ -92,14 +92,16 @@ Telegram request may still complete after a block; its reservation remains charg
 
 ## Persisted removal budgets
 
-Each rolling window enforces all four limits: chat count, chat percentage, global count,
-and global percentage. A single user removed from three chats consumes three units.
-The effective allowance is `min(count limit, floor(population * percent / 100))`.
-There is no rounding upward for small chats: 5% of 10 members permits zero removals.
+Each rolling window enforces a per-chat and a global percentage limit. There are no
+fixed removal-count caps. A single user banned from three chats consumes three units.
+The effective allowance is `floor(population * percent / 100)`. There is no rounding
+upward for small chats: 5% of 10 members permits zero removals.
 
-Initial short-window limits are 2 per chat and 5 globally in 10 minutes, each additionally
-bounded by 5% of memberships. Initial daily limits are 5 per chat and 10 globally,
-additionally bounded by 10%. Adjust these settings for the intended chat populations.
+Initial limits are 5% per chat and globally in 10 minutes, and 10% per chat and globally
+in 24 hours. Adjust these percentages for the intended chat populations. The retired
+`chat_count` and `global_count` configuration fields are discarded automatically. Legacy
+quota incidents stored as absolute counts are retired, and the current percentage
+rules are enforced again before the next removal. Other incidents remain in place.
 Global population sums chat memberships. Counts are fetched through the shared RPM
 budget and cached for the configured lifetime. The minimum observed population among
 current counts and active reservations supplies the percentage denominator, preventing
@@ -111,7 +113,23 @@ request is charged conservatively from the time its outcome is received. A defin
 Telegram rejection or a guard cancellation before dispatch releases the reservation.
 A lost response remains charged and creates an incident; a pending reservation found
 after restart becomes uncertain and is charged from recovery time. Member-count failure
-blocks removal. Manual approval cannot bypass any of these limits.
+blocks removal. Ordinary snapshot approval does not bypass percentage limits.
+
+Administrators can enable a module-wide bypass with `/coroner bypass`, or **Bypass
+removal limits** when a quota incident exists. The configured duration defaults to
+7200 seconds (`removal_limit_bypass_seconds`). `/coroner bypass stop` and **Cancel limit
+bypass** restore percentage enforcement early. Repeating the enable command while
+active does not extend its deadline. The deadline and administrator ID persist in JSON,
+so restarting the bot does not reset the timer. Status, review and detector views show
+the remaining duration. The bypass does not start a stopped module.
+
+While active, the bypass ignores only percentage quota checks and quota-only removal
+blocks. Other anomaly incidents still require approval; quarantine, reference checks,
+member-count verification, retained-history checks and uncertain-removal protection
+remain active. Reservations continue to accumulate during bypass and are checked again
+immediately before dispatch. Expiry or cancellation therefore restores enforcement
+without discarding any usage. Saved quota incidents remain blocked after bypass expiry
+until reviewed or acknowledged under the normal rules.
 
 Reservations are retained for at least the configured retention, removal statistics
 period and longest budget window. If a later configuration extends a window into a
@@ -171,6 +189,7 @@ when those records were created; duration changes apply to new records.
     "quarantine_seconds": 3600,
     "recheck_seconds": 300,
     "approval_seconds": 7200,
+    "removal_limit_bypass_seconds": 7200,
     "rejection_cooldown_seconds": 86400,
     "candidate_history_days": 7,
     "candidate_coefficients": {
@@ -224,16 +243,12 @@ when those records were created; duration changes apply to new records.
       {
         "name": "short",
         "window_seconds": 600,
-        "chat_count": 2,
-        "global_count": 5,
         "chat_percent": 5.0,
         "global_percent": 5.0
       },
       {
         "name": "daily",
         "window_seconds": 86400,
-        "chat_count": 5,
-        "global_count": 10,
         "chat_percent": 10.0,
         "global_percent": 10.0
       }

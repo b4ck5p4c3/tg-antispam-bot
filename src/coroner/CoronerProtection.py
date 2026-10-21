@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from telegram.error import TelegramError
 
 from src.coroner.CoronerApi import CoronerInterrupted
+from src.coroner.CoronerMessages import duration
 from src.coroner.CoronerProtectionModels import (
     CheckObservation, DayObservation, MetricObservation,
     QuarantineCandidate, RemovalReservation, ReviewRequest, ReviewTarget, SafetySignal,
@@ -41,7 +42,13 @@ class CoronerProtection:
         if "api" in self.state.active_rule_keys:
             self.state.active_rule_keys.remove("api")
             self.changed()
-        if self.state.reasons.pop("api", None) is not None:
+        # Old quota incidents used absolute counts; enforce the current percentages
+        # again before the next removal instead of retaining obsolete count caps.
+        retired = [key for key, signal in self.state.reasons.items()
+                   if key == "api" or (signal.kind == "quota" and signal.unit is None)]
+        for key in retired:
+            del self.state.reasons[key]
+        if retired:
             if not self.state.reasons:
                 self.state.blocked = False
                 request = self.state.requests.get(self.state.current_request_id)
@@ -171,11 +178,55 @@ class CoronerProtection:
         if (self.state.quarantine.get(candidate.user_id) is not candidate
                 or candidate.targets.get(chat_id) != generation or now < candidate.ready_at):
             return False
-        return not self.state.blocked or (
+        return not self.is_blocked(now) or (
             candidate.approval_epoch == self.state.epoch
             and candidate.approval_expires_at > now
             and candidate.approved_targets.get(chat_id) == generation
         )
+
+    def limits_bypassed(self, now=None):
+        now = time.time() if now is None else now
+        return now < self.state.removal_limit_bypass_until
+
+    def blocking_reasons(self, now=None):
+        return [signal for signal in self.state.reasons.values()
+                if signal.kind != "quota" or not self.limits_bypassed(now)]
+
+    def is_blocked(self, now=None):
+        return self.state.blocked and (
+            not self.state.reasons or bool(self.blocking_reasons(now))
+        )
+
+    def bypass_status(self, t):
+        if not self.limits_bypassed():
+            return t("limit_bypass_off")
+        return t("limit_bypass_active", remaining=duration(self.state.removal_limit_bypass_until - time.time()),
+                 user_id=self.state.removal_limit_bypass_by)
+
+    async def bypass_limits(self, user_id, *, enabled=True):
+        if not self.service._storage_healthy or not self.service._config_healthy:
+            return "limit_bypass_failed"
+        if enabled and self.limits_bypassed():
+            return "limit_bypass_already_active"
+        previous = self.state.removal_limit_bypass_until, self.state.removal_limit_bypass_by
+        self.state.removal_limit_bypass_until = (
+            time.time() + self.config.removal_limit_bypass_seconds if enabled else 0
+        )
+        self.state.removal_limit_bypass_by = user_id if enabled else None
+        if enabled:
+            for job in self.service.state.queue.values():
+                candidate = self.state.quarantine.get(job.user_id)
+                if (candidate is not None and not job.attempts
+                        and self.permitted(candidate, job.chat_id, job.generation)):
+                    job.not_before = 0
+        self.changed()
+        if not await self.service.save(force=True):
+            self.state.removal_limit_bypass_until, self.state.removal_limit_bypass_by = previous
+            self.changed()
+            return "limit_bypass_failed"
+        self.service.logger.warning("CORONER removal-limit bypass enabled=%s by=%s until=%s",
+                                    enabled, user_id, self.state.removal_limit_bypass_until)
+        return "limit_bypass_enabled" if enabled else "limit_bypass_disabled"
 
     def finish_target(self, user_id, chat_id):
         candidate = self.state.quarantine.get(user_id)
@@ -214,7 +265,8 @@ class CoronerProtection:
             if signal.chat_id is not None:
                 text = self.service.t("error_chat", chat_id=signal.chat_id, text=text)
             return text
-        return self.service.t("safety_reason", kind=self.service.t("safety_kind_" + signal.kind),
+        return self.service.t("quota_reason" if signal.kind == "quota" else "safety_reason",
+                              kind=self.service.t("safety_kind_" + signal.kind),
                               value=f"{signal.value:g}", threshold=f"{signal.threshold:g}",
                               scope=str(signal.chat_id) if signal.chat_id is not None else (signal.grade or "ALL"))
 
@@ -478,7 +530,7 @@ class CoronerProtection:
         self.changed()
         return dict(populations)
 
-    def budget_failure(self, chat_id, populations, now=None):
+    def budget_failure(self, chat_id, populations, now=None, *, reservation=None):
         now = time.time() if now is None else now
         if chat_id not in populations or any(value <= 0 for value in populations.values()):
             return SafetySignal(key="population-unavailable", kind="population", at=now)
@@ -486,19 +538,24 @@ class CoronerProtection:
             if now - limit.window_seconds < self.state.reservations_discarded_until:
                 return SafetySignal(key="budget-history-unavailable", kind="budget_history", at=now,
                                     value=limit.window_seconds)
+            if self.limits_bypassed(now):
+                continue
             entries = [entry for entry in self.state.reservations
                        if (entry.at > now - limit.window_seconds or entry.state == "pending") and entry.state != "released"
                        and (not entry.dry_run or self.service.config.dry_run)]
             local = [entry for entry in entries if entry.chat_id == chat_id]
             chat_base = min([populations[chat_id]] + [entry.chat_population for entry in local if entry.chat_population > 0])
             global_base = min([sum(populations.values())] + [entry.global_population for entry in entries if entry.global_population > 0])
-            for scope, count, base, maximum, percent in (
-                    (chat_id, len(local), chat_base, limit.chat_count, limit.chat_percent),
-                    (None, len(entries), global_base, limit.global_count, limit.global_percent)):
-                allowed = min(maximum, math.floor(base * percent / 100))
-                if count + 1 > allowed:
+            for scope, records, base, percent in (
+                    (chat_id, local, chat_base, limit.chat_percent),
+                    (None, entries, global_base, limit.global_percent)):
+                count = len(records) + (0 if reservation is not None and any(
+                    entry.id == reservation.id for entry in records
+                ) else 1)
+                allowed = math.floor(base * percent / 100)
+                if count > allowed:
                     return SafetySignal(key=f"quota:{limit.name}:{scope}", kind="quota", at=now,
-                                        value=count + 1, threshold=allowed, chat_id=scope)
+                                        value=100 * count / base, threshold=percent, chat_id=scope, unit="percent")
         return None
 
     async def reserve(self, job, guard):
@@ -527,7 +584,7 @@ class CoronerProtection:
 
     def schedule_notifications(self):
         application = self.service.application
-        if application is None or not application.running or not self.state.blocked:
+        if application is None or not application.running or not self.is_blocked():
             return
         if self._notification_task is not None and not self._notification_task.done():
             return

@@ -83,6 +83,7 @@ class CoronerCommandsHandler:
                 await self._protection_display(update, action, refresh_links=True)
                 return
             valid = ((action in ("help", "start", "stop", "acknowledge") and len(args) == 1)
+                     or (action == "bypass" and (len(args) == 1 or (len(args) == 2 and args[1].casefold() == "stop")))
                      or (action == "ref" and len(args) == 2 and args[1].isascii()
                          and args[1].isdigit() and 0 < int(args[1]) < 2 ** 52)
                      or (action == "run" and len(args) == 2
@@ -92,6 +93,10 @@ class CoronerCommandsHandler:
             elif action == "acknowledge":
                 notice = coroner_text(update.locale, self.service.protection.acknowledge())
                 await self.service.save(force=True)
+            elif action == "bypass":
+                result = await self.service.protection.bypass_limits(user.id, enabled=len(args) == 1)
+                notice = coroner_text(update.locale, result) + "\n" + self.service.protection.bypass_status(
+                    lambda key, **values: coroner_text(update.locale, key, **values))
             elif action in ("start", "stop", "ref"):
                 if action == "start":
                     notice = coroner_text(update.locale, await self.service.start())
@@ -171,11 +176,16 @@ class CoronerCommandsHandler:
                 await self._display(update, edit=True)
                 return
             if action == "new":
-                if not self.service.state.protection.blocked:
+                if not self.service.protection.is_blocked():
                     self.service.protection.trip(SafetySignal(key="manual-review", kind="manual", at=time.time()))
                     request_id = self.service.state.protection.current_request_id
                 else:
                     request_id = self.service.protection.new_request().id
+                action = "review"
+            elif action in ("bypass_on", "bypass_off"):
+                result = await self.service.protection.bypass_limits(
+                    update.effective_user.id, enabled=action == "bypass_on")
+                notice = coroner_text(update.locale, result)
                 action = "review"
             elif action == "stop":
                 await self.service.stop()

@@ -116,6 +116,9 @@ Administrator commands:
   available, and only rejected IDs are shown for copying. Update retries the current page.
 - `/coroner review`: Show snapshot statistics and accounts together. Confirm the whole
   snapshot or stop Coroner if detection is wrong. Also available from service notifications.
+- `/coroner bypass`: Temporarily bypass removal percentage limits for 2 hours by default;
+  `/coroner bypass stop` cancels early. Other protection rules still apply. The deadline
+  persists across restarts and is shown in status, review and detector views.
 - `/coroner acknowledge`: Release a safety incident after its quarantine is empty and
   its detectors are no longer triggered. Removal budgets are preserved.
 
@@ -222,6 +225,11 @@ Service subscribers with current administrator access to every moderated chat re
 review notifications. Approval covers the snapshot's exact accounts and memberships;
 it cannot skip quarantine, fresh checks, or removal budgets. A subsequent incident
 invalidates earlier approval grants.
+
+Removal limits use percentages only: 5% per chat and globally in 10 minutes, and 10%
+in 24 hours by default. Retired absolute count settings are removed automatically.
+An administrator can temporarily bypass these percentage limits; quarantine, reference
+checks and anomaly review remain active, and removal history continues to accumulate.
 
 The `protection` section is added to valid existing configurations automatically.
 See [Coroner protection configuration](docs/coroner-protection.md) for every setting,

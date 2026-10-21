@@ -10,6 +10,8 @@ CORONER_MESSAGES = {
               "/coroner quarantine — quarantined accounts and profile links.\n"
               "/coroner review — review deletion candidates.\n"
               "/coroner acknowledge — release a resolved protection incident.\n"
+              "/coroner bypass — bypass removal percentage limits for the configured duration (2 hours by default).\n"
+              "/coroner bypass stop — cancel the removal-limit bypass.\n"
               "Commands apply across all moderated chats. Subcommands and grades ignore case."),
     "group_only": "Use Coroner in a private chat with the bot or a moderated group or supergroup.",
     "ref_group_only": "Set the reference with /coroner ref <ID> in a moderated group where the bot can look up this account.",
@@ -121,7 +123,16 @@ CORONER_MESSAGES = {
     "detector_checks": "Logical checks: {count}; is_alive == false: {deleted}; unknown: {unknown}. Trigger samples deduplicate users.\nHistorical checks, min / max / mean: {checks_history}\nHistorical false checks: {deleted_history}",
     "quarantine_summary": "Quarantine: {count}; ready: {ready}; oldest: {oldest}\nRequired delay: {delay}\nHistorical size, min / max / mean: {history}\nCancelled candidates confirmed alive: {cancelled}",
     "activity_settings": "Messages contradicting deletion: {count}; trigger: {minimum} users in {period}\nRecently alive means within {recent}\nApproval validity: {approval}; confirmed-alive cooldown: {cooldown}\nMetric sampling: {sampling}; calendar timezone: {timezone}; required daily coverage: {coverage}%",
-    "limit_summary": "Budget {name}: {period}\nGlobal usage: {count}/{maximum}; maximum fraction: {percent}%\nPer chat: {local} removals, at most {local_percent}%\nCurrent chat usage: {chats}\nAn uncertain request consumes budget; approval cannot bypass it.",
+    "limit_summary": "Budget {name}: {period}\nGlobal usage: {count} removals; maximum fraction: {percent}%\nPer chat: at most {local_percent}%\nCurrent chat usage: {chats}\nPending and uncertain requests consume budget. An administrator can temporarily bypass percentage limits.",
+    "limit_bypass_enabled": "Removal percentage limits bypassed. Other safeguards still apply.",
+    "limit_bypass_disabled": "Removal percentage limits are enforced again.",
+    "limit_bypass_already_active": "Removal-limit bypass is already active; its deadline was not extended.",
+    "limit_bypass_failed": "Could not save the removal-limit bypass. Check Coroner errors.",
+    "limit_bypass_off": "Removal-limit bypass: off",
+    "limit_bypass_active": "Removal-limit bypass: {remaining} remaining; administrator {user_id}",
+    "limit_bypass_button": "Bypass removal limits ({duration})",
+    "limit_bypass_cancel": "Cancel limit bypass",
+    "quota_reason": "{kind}: {value}% / {threshold}%; scope: {scope}",
     "removed_period": "Removals in the last {days} days; percentages use current summed chat memberships:",
     "removed_grade": "{grade}: {users} unique users, {count} chat removals ({percent})",
     "review_heading": "Coroner — deletion review",

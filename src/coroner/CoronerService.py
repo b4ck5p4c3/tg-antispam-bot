@@ -737,10 +737,18 @@ class CoronerService:
             self._complete_check(job, row)
             return
         grade = self._user_grade(job.user_id, time.time()).name
+        reservation = None
         def removal_guard():
             guard()
             if not row.active or event_version != (row.last_event_at, row.last_update_id):
                 raise CoronerInterrupted()
+            if reservation is not None:
+                failure = self.protection.budget_failure(
+                    job.chat_id, self.state.protection.populations, reservation=reservation,
+                )
+                if failure is not None:
+                    self.protection.trip(failure)
+                    raise CoronerInterrupted()
 
         reservation = await self.protection.reserve(job, removal_guard)
         if reservation is None:
@@ -874,10 +882,11 @@ class CoronerService:
         lines = [t("heading", count=len(chat_ids)), t("status", status=self.state.status),
                  t("dry_run", value=t("yes" if self.config.dry_run else "no"))]
         protection = self.state.protection
-        lines.append(t("protection_status", status=t("protection_blocked" if protection.blocked else "protection_clear")))
+        lines.append(t("protection_status", status=t("protection_blocked" if self.protection.is_blocked() else "protection_clear")))
+        lines.append(self.protection.bypass_status(t))
         lines.append(t("quarantine_count", count=len(protection.quarantine)))
-        if protection.blocked:
-            for signal in list(protection.reasons.values())[-2:]:
+        if self.protection.is_blocked():
+            for signal in self.protection.blocking_reasons()[-2:]:
                 lines.append(shorten(self.protection.reason_text(signal), 220))
         if self.config.reference_user_id is None:
             lines.append(t("reference_missing"))

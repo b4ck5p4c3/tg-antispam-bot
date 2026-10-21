@@ -34,13 +34,25 @@ class CoronerProtectionView:
     def t(self, key, **values):
         return coroner_text(self.locale, key, **values)
 
-    def button(self, key, action, request_id="-", page=0):
+    def button(self, key, action, request_id="-", page=0, **values):
         data = CoronerProtectionKeyboardData(action=action, request_id=request_id, page=page)
-        return InlineKeyboardButton(self.t(key), callback_data=data.model_dump())
+        return InlineKeyboardButton(self.t(key, **values), callback_data=data.model_dump())
+
+    def bypass_button(self, request_id="-", page=0):
+        if self.protection.limits_bypassed():
+            return self.button("limit_bypass_cancel", "bypass_off", request_id, page)
+        if any(signal.kind == "quota" for signal in self.protection.state.reasons.values()):
+            return self.button("limit_bypass_button", "bypass_on", request_id, page,
+                               duration=duration(self.protection.config.removal_limit_bypass_seconds))
+        return None
 
     def main_buttons(self):
-        return [[self.button("detectors", "detectors"), self.button("quarantine_button", "quarantine")],
+        rows = [[self.button("detectors", "detectors"), self.button("quarantine_button", "quarantine")],
                 [self.button("reviews", "review")]]
+        bypass = self.bypass_button()
+        if bypass is not None:
+            rows.append([bypass])
+        return rows
 
     async def display(self, action, request_id, page, chat_id, *, notice="", message_id=None,
                       refresh_links=False):
@@ -148,8 +160,7 @@ class CoronerProtectionView:
             for item in entries:
                 counts[item.chat_id] = counts.get(item.chat_id, 0) + 1
             cards.append(self.t("limit_summary", name=limit.name, period=duration(limit.window_seconds),
-                                count=len(entries), maximum=limit.global_count, percent=limit.global_percent,
-                                local=limit.chat_count, local_percent=limit.chat_percent,
+                                count=len(entries), percent=limit.global_percent, local_percent=limit.chat_percent,
                                 chats=shorten(str(counts), 300)) + "\n" + self.t("count_history", history=self._history_stats(
                                     self._history_with_current("budget:" + limit.name, len(entries), now,
                                                                limit.window_seconds))))
@@ -166,10 +177,14 @@ class CoronerProtectionView:
         pages = max(1, math.ceil(len(cards) / cfg.detector_page_size))
         page = max(0, min(page, pages - 1))
         text = self.t("detector_heading") + "\n" + self.t("protection_status", status=self.t(
-            "protection_blocked" if state.blocked else "protection_clear")) + "\n"
+            "protection_blocked" if self.protection.is_blocked() else "protection_clear")) + "\n"
+        text += self.protection.bypass_status(self.t) + "\n"
         text += self.t("page", page=page + 1, pages=pages) + "\n\n"
         text += "\n\n".join(cards[page * cfg.detector_page_size:(page + 1) * cfg.detector_page_size])
         buttons = self._navigation("detectors", "-", page, pages)
+        bypass = self.bypass_button()
+        if bypass is not None:
+            buttons.append([bypass])
         buttons += [[self.button("update", "detectors", page=page), self.button("back", "status")]]
         return shorten(text, 4000), InlineKeyboardMarkup(buttons)
 
@@ -198,9 +213,10 @@ class CoronerProtectionView:
         request = state.requests.get(request_id)
         lines = [self.t("review_heading"), self.t("status", status=self.service.state.status),
                  self.t("protection_status", status=self.t(
-                     "protection_blocked" if state.blocked else "protection_clear"))]
+                     "protection_blocked" if self.protection.is_blocked() else "protection_clear")),
+                 self.protection.bypass_status(self.t)]
         lines.extend(shorten(self.protection.reason_text(signal), 180)
-                     for signal in list(state.reasons.values())[-2:])
+                     for signal in self.protection.blocking_reasons()[-2:])
         if request is None:
             lines.append(self.t("review_none"))
         else:
@@ -226,13 +242,16 @@ class CoronerProtectionView:
         ids = sorted(request.targets) if request is not None else []
         can_approve = (request is not None and request.targets and request.state == "pending"
                        and request.epoch == state.epoch)
-        text, buttons, page, pages = self._account_page(lines, ids, page, 4 + bool(can_approve))
+        bypass = self.bypass_button(request_id, page)
+        text, buttons, page, pages = self._account_page(lines, ids, page, 4 + bool(can_approve) + (bypass is not None))
         buttons += self._navigation("review", request_id, page, pages)
         if can_approve:
             buttons.append([self.button("approve_all", "approve_all", request.id)])
+        if bypass is not None:
+            buttons.append([bypass])
         buttons.extend([
             [self.button("stop_module", "stop"),
-             self.button("review_new" if state.blocked else "pause_review", "new")],
+             self.button("review_new" if self.protection.is_blocked() else "pause_review", "new")],
             [self.button("update", "refresh_review", request_id, page), self.button("back", "status")],
         ])
         return text, InlineKeyboardMarkup(buttons)
