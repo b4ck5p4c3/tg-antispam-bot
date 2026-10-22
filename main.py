@@ -48,6 +48,9 @@ def main():
         try:
             telegram_application.run_polling(allowed_updates=Update.ALL_TYPES)
         finally:
+            coroner = telegram_application.bot_data.get("coroner")
+            if coroner is not None:
+                coroner.close()
             __stop_webserver(webserver, webserver_thread)
             telegram_api_status_service.stop()
         return
@@ -57,6 +60,9 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        coroner = telegram_application.bot_data.get("coroner")
+        if coroner is not None:
+            coroner.close()
         telegram_api_status_service.stop()
 
 

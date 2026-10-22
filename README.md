@@ -86,7 +86,7 @@ The user's current username is checked again before unbanning. Unbans use
 
 ## Coroner: deleted accounts
 
-Coroner observes members of moderated groups, saves its roster and queue in JSON,
+Coroner observes members of moderated groups, saves its roster and queue in SQLite,
 and checks accounts periodically. It starts **stopped** on the first launch. Later
 restarts preserve its saved status: `running` resumes after a fresh reference check,
 while `stopped` and `error` require a manual start. Observation continues while stopped;
@@ -150,6 +150,8 @@ percentage is unavailable rather than reporting a partial result.
   "reference_user_id": null,
   "reference_chat_id": null,
   "retry_delay_seconds": 60,
+  "invalid_response_retries": 1,
+  "invalid_response_retry_delay_seconds": 1,
   "grades": [
     {"name": "G1", "max_age_seconds": 86400, "check_interval_seconds": 1800},
     {"name": "G2", "max_age_seconds": 604800, "check_interval_seconds": 7200},
@@ -163,26 +165,23 @@ Edit settings while stopped, then use `/coroner start` to reload them. A configu
 live reference is mandatory. Each user has **one global grade**, measured from their
 earliest known join or first observation in any moderated chat. Unknown join dates
 start at G1 from first observation; confirmed joins use their actual date. A later
-join to another chat, a leave/rejoin, or abandoning the first chat does not reset the
-global age. Existing per-chat records initialize the global age from the earliest
-saved date automatically. The same global grade controls the check interval in every
-chat and is recorded on removal. Thresholds and intervals are in seconds.
+join to another chat does not reset the global age. Each user stores a simple `chat_ids`
+array, one last-check timestamp and one next-check timestamp. The global queue contains
+at most one job per user. Each check chooses a random known moderated chat and calls
+`getChatMember`; a successful check schedules the next check globally. The grade is
+recorded on removal. Thresholds and intervals are in seconds. Delayed join events can refine
+the global first-seen date. Duplicate events describing the same join do not invalidate
+the current check; event-order and duplicate markers remain in memory only.
+
+Grade changes are logged at INFO once per user across all chats, including changes
+noticed after a restart or while checks are stopped. The last observed grade persists
+in SQLite. Existing records initialize this field from their current age without
+inventing historical transitions. A grade change does not remove a participant or
+change their contribution to the untracked percentage. That percentage can rise when
+the total chat population falls, even with an unchanged number of untracked members.
+Departures and bans discovered by membership checks are logged at INFO and remove
+the corresponding chat from the user's membership array.
 The shared 450 RPM budget includes checks, reference lookups, UI and retries.
-
-To import known members manually, **shut down the bot process** (not just
-`/coroner stop`) and run:
-
-```bash
-python3 import_coroner_members.py --chat-id -1001234567890 123456789 987654321
-# Or import a text file with user IDs separated by whitespace or commas:
-python3 import_coroner_members.py --chat-id -1001234567890 --file members.txt
-```
-
-New users start at G1 from the import time. Existing memberships, global ages,
-queue and protection state are preserved. The script writes atomically to
-`<DATA_FOLDER_PATH>/coroner_state.json` (default: `data/coroner_state.json`);
-`--state /path/to/coroner_state.json` selects another file. Restart the bot after
-importing. The chat must already be enabled with `/moderate`; import does not start checks.
 
 An account is a removal candidate only when its returned first name is exactly `""`.
 Invisible characters remain nonempty. Candidates require confirmation via `getChat`,
@@ -191,12 +190,31 @@ final membership check. Confirmed removal permanently bans the current member wi
 `banChatMember(until_date=0)`. Coroner sends no subsequent unban or permission-restoration
 request. Previously banned users and administrators are skipped.
 
-`PARTICIPANT_ID_INVALID` during a participant check or removal excludes that user
-globally from Coroner's roster, queue and quarantine. The exclusion persists in
-`coroner_state.json` as `excluded_user_ids`; observation and manual imports skip it.
-This excludes the user from monitoring and does not kick them or count as a removal.
-Reference-account failures keep their existing protection behavior. Other API errors
-are retried normally. Removal history, safety incidents and budget evidence are retained.
+Exact missing-user responses (`Member not found`, `User not found`,
+`PARTICIPANT_ID_INVALID`, `USER_ID_INVALID`) remove only the chat used for that
+check, then immediately try another known chat within the same job. A returned
+left/kicked/non-member status follows the same path. If no chats remain, the user,
+queued job and quarantine entry are removed. A later observation can add the user
+again at G1. There is no permanent exclusion list. Permission, network, rate-limit
+and unrelated API errors preserve memberships and retry normally. Reference lookup
+errors retain their safety behavior and never prune the reference via this path.
+Removal history, safety incidents and budget evidence are retained.
+
+Quarantine is user-wide and covers all known chats. After it expires and protection
+permits removal, Coroner processes every target chat, checking membership, admin status,
+the reference and removal budgets before each permanent ban. A chat-specific API
+failure retains that target for retry while other chats can proceed. Global rate limits,
+safety blocks and uncertain ban outcomes still stop further removals. Dry runs log each target
+and reschedule one global check without removing membership records.
+
+Invalid/non-JSON API or proxy responses get one additional attempt by default, with a
+one-second delay (`invalid_response_retries` and `invalid_response_retry_delay_seconds`).
+Only profile/member-count/admin lookups and callback acknowledgements are retried this
+way; every attempt shares the RPM budget and rechecks cancellation guards. Unconfirmed
+ban requests retain their uncertain-result protection and are never retried blindly.
+Exhausted attempts remain visible as readable errors for the normal seven-day lifetime.
+An old reference error in that history does not mean verification is still failing;
+the latest reference result and current module status show whether work can proceed.
 
 The reference is checked before starting, after every configured number of ordinary
 checks, and before every intended removal, including dry runs. A reference detected as
@@ -209,10 +227,25 @@ With `dry_run: true`, the same checks and safeguards run, but removal only write
 and actual removal statistics stay unchanged. With `false` (the default), confirmed bans
 are enabled only after explicitly starting the module.
 
-`coroner_state.json` stores the per-chat roster, global user ages and first-chat IDs,
-queue timestamps, control state and actual removal history. Both JSON files use
-atomic replacement. An interrupted ban whose
-outcome cannot be confirmed is not counted as successful. Status errors remain in memory
+`<DATA_FOLDER_PATH>/coroner_state.sqlite3` stores users with membership arrays, global ages and schedules,
+queue, checks, quarantine, permissions, control state and removal history alongside
+`coroner_config.json`. Configuration remains JSON with atomic replacement. State uses
+SQLite WAL and durable transactions; saves update only changed records. One bot process
+may write the database at a time. A clean shutdown flushes pending state. A database
+error stops checks instead of replacing existing state with an empty database.
+
+Existing JSON state and SQLite schema 1 require a separate, explicit offline conversion
+to schema 2 before switching to this version. Runtime does not read or upgrade old state. Stop the bot process,
+convert the saved state, verify the result, and keep the original JSON as a rollback
+backup. A newly created database starts stopped. Running/stopped/error status and all
+safety state survive subsequent restarts.
+
+Use SQLite's backup API for a consistent backup while running. Do not copy just the
+`.sqlite3` file while the bot is running: committed changes may still be in its `-wal`
+file. Stop the bot before moving the database or editing state externally. Read-only
+SQLite connections can inspect committed records while the bot runs.
+
+An interrupted ban whose outcome cannot be confirmed is not counted as successful. Status errors remain in memory
 only, retain at most five entries across the module with chat context, expire seven
 days after their last occurrence, and are lost on process restart;
 neither expiry nor Update clears the persisted emergency state.

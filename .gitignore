@@ -6,6 +6,7 @@ data/state.json
 data/openai_config.json
 data/coroner_config.json
 data/coroner_state.json
+data/coroner_state.sqlite3*
 .env
 
 ignore/

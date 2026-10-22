@@ -1,10 +1,11 @@
 import asyncio
+import logging
 import re
 import time
 from collections import deque
 from datetime import timedelta
 
-from telegram.error import BadRequest, Forbidden, NetworkError, RetryAfter
+from telegram.error import BadRequest, Forbidden, NetworkError, RetryAfter, TelegramError
 
 
 class CoronerInterrupted(Exception):
@@ -14,10 +15,18 @@ class CoronerInterrupted(Exception):
 class CoronerApi:
     """A paced sliding-minute budget shared by all Coroner calls, including UI."""
 
-    def __init__(self, rpm, on_error, active=lambda: True):
+    _RETRYABLE_METHODS = frozenset((
+        "get_chat_member", "get_chat", "get_chat_member_count", "get_chat_administrators",
+        "answer_callback_query",
+    ))
+
+    def __init__(self, rpm, on_error, active=lambda: True,
+                 invalid_response_retries=lambda: 1, invalid_response_retry_delay=lambda: 1):
         self._rpm = rpm
         self._on_error = on_error
         self._active = active
+        self._invalid_response_retries = invalid_response_retries
+        self._invalid_response_retry_delay = invalid_response_retry_delay
         self._condition = asyncio.Condition()
         self._calls = deque()
         self._waiters = []
@@ -63,28 +72,40 @@ class CoronerApi:
 
     async def call(self, method, *, priority=0, guard=None, error_chat_id=None,
                    background=False, expected_privacy_error=False, **params):
-        await self._acquire(priority, guard)
-        if not self._active():
-            raise CoronerInterrupted()
-        if guard is not None:
-            guard()
-        try:
-            return await method(
-                **params, read_timeout=15, write_timeout=15,
-                connect_timeout=5, pool_timeout=5,
-            )
-        except BadRequest as error:
-            if method.__name__ == "edit_message_text" and "message is not modified" in str(error).lower():
-                return None
-            if not (expected_privacy_error and self.is_profile_privacy_error(error)):
+        retries = self._invalid_response_retries() if method.__name__ in self._RETRYABLE_METHODS else 0
+        for attempt in range(retries + 1):
+            await self._acquire(priority, guard)
+            if not self._active():
+                raise CoronerInterrupted()
+            if guard is not None:
+                guard()
+            try:
+                return await method(
+                    **params, read_timeout=15, write_timeout=15,
+                    connect_timeout=5, pool_timeout=5,
+                )
+            except BadRequest as error:
+                if (background and method.__name__ in ("get_chat_member", "get_chat")
+                        and self.is_missing_member(error) and guard is not None):
+                    guard()  # A late negative result must not invalidate a newer join or message.
+                if method.__name__ == "edit_message_text" and "message is not modified" in str(error).lower():
+                    return None
+                if not (expected_privacy_error and self.is_profile_privacy_error(error)):
+                    self._on_error(error_chat_id, method.__name__, params, error, background)
+                raise
+            except Exception as error:
+                if self.is_invalid_response(error) and attempt < retries:
+                    logging.getLogger("Coroner").warning(
+                        "CORONER invalid API/proxy response for %s; retry=%s/%s",
+                        method.__name__, attempt + 1, retries,
+                    )
+                    await asyncio.sleep(self._invalid_response_retry_delay())
+                    continue
+                if isinstance(error, RetryAfter):
+                    seconds = self.retry_delay(error)
+                    self._blocked_until = max(self._blocked_until, time.monotonic() + seconds)
                 self._on_error(error_chat_id, method.__name__, params, error, background)
-            raise
-        except Exception as error:
-            if isinstance(error, RetryAfter):
-                seconds = self.retry_delay(error)
-                self._blocked_until = max(self._blocked_until, time.monotonic() + seconds)
-            self._on_error(error_chat_id, method.__name__, params, error, background)
-            raise
+                raise
 
     @staticmethod
     def retry_delay(error, default=60) -> float:
@@ -98,13 +119,29 @@ class CoronerApi:
         return isinstance(error, BadRequest) and "BUTTON_USER_PRIVACY_RESTRICTED" in str(error).upper()
 
     @staticmethod
-    def is_invalid_participant(error) -> bool:
-        return isinstance(error, BadRequest) and str(error).strip().upper().removeprefix(
-            "BAD REQUEST: ",
-        ).strip() == "PARTICIPANT_ID_INVALID"
+    def is_missing_member(error) -> bool:
+        if not isinstance(error, BadRequest):
+            return False
+        reason = str(error).strip().casefold().removeprefix("bad request: ").strip().replace("_", " ")
+        return reason in {"member not found", "user not found", "participant id invalid", "user id invalid"}
+
+    @staticmethod
+    def is_invalid_response(error) -> bool:
+        if not isinstance(error, TelegramError):
+            return False
+        # Recent PTB versions wrap this parsing error in NetworkError for HTTP 5xx.
+        for _ in range(4):
+            if error is None:
+                return False
+            if str(error).strip().casefold() == "invalid server response":
+                return True
+            error = error.__cause__
+        return False
 
     @staticmethod
     def error_kind(error) -> str:
+        if CoronerApi.is_invalid_response(error):
+            return "api_invalid_response"
         if isinstance(error, Forbidden):
             return "api_forbidden"
         if isinstance(error, RetryAfter):

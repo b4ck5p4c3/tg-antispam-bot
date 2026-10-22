@@ -23,6 +23,8 @@ class CoronerConfig(BaseModel):
     reference_user_id: int | None = Field(default=None, gt=0, strict=True)
     reference_chat_id: int | None = Field(default=None, lt=0, strict=True)
     retry_delay_seconds: int = Field(default=60, gt=0, strict=True)
+    invalid_response_retries: int = Field(default=1, ge=0, le=5, strict=True)
+    invalid_response_retry_delay_seconds: float = Field(default=1, ge=0, allow_inf_nan=False)
     protection: ProtectionConfig = Field(default_factory=ProtectionConfig)
     grades: list[Grade] = Field(default_factory=lambda: [
         Grade(name="G1", max_age_seconds=86400, check_interval_seconds=1800),
@@ -50,43 +52,30 @@ class CoronerConfig(BaseModel):
                     if grade.max_age_seconds is None or age < grade.max_age_seconds)
 
 
-class Participant(BaseModel):
-    first_seen_at: float
-    joined_at: float | None = None
-    active: bool = True
-    status: str = "member"
-    last_event_at: float = 0
-    last_departure_at: float = 0
-    last_update_id: int = -1
-    generation: int = 0
-    last_successful_check: float | None = None
-    next_check_at: float = 0
-
-    @property
-    def since(self) -> float:
-        return self.joined_at if self.joined_at is not None else self.first_seen_at
-
-
 class CheckJob(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
-    chat_id: int
+    chat_id: int | None = None
     user_id: int
     generation: int
     enqueued_at: float
     not_before: float = 0
     source: Literal["scheduled", "manual"] = "scheduled"
     attempts: int = 0
-    stage: Literal["check", "removing"] = "check"
 
     @property
     def key(self) -> str:
-        return f"{self.chat_id}:{self.user_id}"
+        return str(self.user_id)
 
 
 class TrackedUser(BaseModel):
+    chat_ids: list[int] = Field(default_factory=list)
+    generation: int = 0
+    last_successful_check: float | None = None
+    next_check_at: float = 0
     since: float
     first_chat_id: int
     last_alive_at: float | None = None
+    last_grade: Literal["G1", "G2", "G3", "G4"] | None = None
 
 
 class Removal(BaseModel):
@@ -98,11 +87,9 @@ class Removal(BaseModel):
 
 
 class CoronerState(BaseModel):
-    version: Literal[1] = 1
+    version: Literal[2] = 2
     status: Literal["stopped", "running", "error"] = "stopped"
-    participants: dict[int, dict[int, Participant]] = Field(default_factory=dict)
     users: dict[int, TrackedUser] = Field(default_factory=dict)
-    excluded_user_ids: set[int] = Field(default_factory=set)
     queue: dict[str, CheckJob] = Field(default_factory=dict)
     removals: list[Removal] = Field(default_factory=list)
     protection: ProtectionState = Field(default_factory=ProtectionState)

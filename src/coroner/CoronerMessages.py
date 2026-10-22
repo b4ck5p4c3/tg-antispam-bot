@@ -50,14 +50,15 @@ CORONER_MESSAGES = {
     "yes": "yes",
     "no": "no",
     "unavailable": "unavailable",
-    "storage_error": ("Cannot read or save Coroner JSON files. Checks are stopped; "
-                      "repair the files or permissions and restart the bot."),
+    "storage_error": ("Cannot read or save the Coroner SQLite database. Checks are stopped; "
+                      "repair the database or permissions and restart the bot."),
     "config_error": "Invalid Coroner configuration. Check coroner_config.json and use /coroner start again.",
     "api_error": "Could not {operation}{subject}: {reason}. {action}",
     "api_subject": " for user {user_id}",
     "api_forbidden": "the bot does not have access or the required permissions",
     "api_retry": "Telegram requested a pause",
     "api_network": "Telegram is temporarily unavailable",
+    "api_invalid_response": "Telegram or its API proxy returned an invalid response (not valid JSON); the service may be temporarily unavailable",
     "api_bad_request": "Telegram rejected the request; check the chat, account and bot permissions",
     "api_other": "an unexpected error occurred",
     "retry_action": "The check will be retried.",
@@ -73,8 +74,6 @@ CORONER_MESSAGES = {
     "operation_default": "complete the operation",
     "profile_unknown": ("The profile for user {user_id} is incomplete or contradictory. "
                         "No removal was performed; the check will be retried."),
-    "invalid_participant": ("User {user_id} was excluded from Coroner monitoring: "
-                            "Telegram rejected the participant ID. Further checks for this user are disabled."),
     "reference_failed": ("CRITICAL: the reference account {user_id} was detected as deleted. "
                          "Coroner is in error and requires a successful manual /coroner start."),
     "reference_unknown": ("The reference account could not be verified as alive. "

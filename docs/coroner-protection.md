@@ -2,8 +2,9 @@
 
 Coroner has one reference account. Confirmed deletion candidates enter a persisted,
 user-wide quarantine before any removal. The default delay is 60 minutes. A candidate
-stores membership generations for every target chat, so a stale removal cannot apply
-to a later rejoin. Accounts are shown as inline URL buttons using
+stores a global membership generation and its target chat IDs, so a stale removal
+cannot apply to a later rejoin. Profile checks have one schedule and queue job per
+user; successful confirmation creates removal targets for every known chat. Accounts are shown as inline URL buttons using
 `tg://user?id=...`; tapping one opens that account directly, without an intermediate
 bot card or selection step. Telegram can reject these buttons because of account privacy
 restrictions, especially in private chats. A rejected keyboard is split into groups
@@ -178,7 +179,7 @@ statistics show unique user counts plus chat-removal counts; percentages use cur
 summed chat memberships. The existing 30-day module totals remain available.
 
 Quarantine, anomaly permissions, detector observations, calendar coverage, budget evidence
-and protection reasons live in `coroner_state.json`. Human-readable temporary errors remain
+and protection reasons live in `coroner_state.sqlite3`. Human-readable temporary errors remain
 in memory only, at most five for seven days. Latched reasons are separate protection
 state. Current detector reasons are removed after normalization; temporary error expiry
 does not clear unresolved protection conditions.

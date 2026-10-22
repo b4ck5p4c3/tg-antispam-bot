@@ -5,7 +5,7 @@ from threading import RLock
 
 
 class CoronerStore:
-    """Atomic snapshots; invalid existing files are never replaced by defaults."""
+    """Atomic JSON configuration writes; invalid files are never replaced by defaults."""
 
     def __init__(self, folder: str):
         self.folder = Path(folder)

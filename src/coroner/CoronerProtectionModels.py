@@ -106,10 +106,12 @@ class QuarantineCandidate(BaseModel):
     grade: str
     detected_at: float
     ready_at: float
-    targets: dict[int, int] = Field(default_factory=dict)
+    targets: list[int] = Field(default_factory=list)
+    generation: int = 0
 
 
 class CheckObservation(BaseModel):
+    id: str = Field(default_factory=lambda: uuid4().hex)
     user_id: int
     chat_id: int
     at: float
@@ -137,6 +139,7 @@ class MetricRange(BaseModel):
 
 
 class MetricObservation(BaseModel):
+    id: str = Field(default_factory=lambda: uuid4().hex)
     at: float
     samples: int
     matches: int

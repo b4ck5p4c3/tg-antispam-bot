@@ -155,7 +155,7 @@ class CoronerProtection:
             user.last_alive_at = now
         self.changed()
 
-    def enter(self, job, row, now=None):
+    def enter(self, job, user, now=None):
         now = time.time() if now is None else now
         if self.state.rejected_until.get(job.user_id, 0) > now:
             return None
@@ -164,11 +164,11 @@ class CoronerProtection:
             candidate = QuarantineCandidate(
                 user_id=job.user_id, grade=self.service._user_grade(job.user_id, now).name,
                 detected_at=now, ready_at=now + self.config.quarantine_seconds,
+                targets=list(user.chat_ids), generation=user.generation,
             )
             self.state.quarantine[job.user_id] = candidate
             day = self.state.days.setdefault(self.day(now).isoformat(), DayObservation())
             day.candidates.setdefault(job.user_id, candidate.grade)
-        candidate.targets[job.chat_id] = row.generation
         self.changed()
         self.evaluate(now)
         return candidate
@@ -176,7 +176,7 @@ class CoronerProtection:
     def permitted(self, candidate, chat_id, generation, now=None):
         now = time.time() if now is None else now
         if (self.state.quarantine.get(candidate.user_id) is not candidate
-                or candidate.targets.get(chat_id) != generation or now < candidate.ready_at):
+                or chat_id not in candidate.targets or candidate.generation != generation or now < candidate.ready_at):
             return False
         return not self.is_blocked(now)
 
@@ -201,17 +201,15 @@ class CoronerProtection:
 
     def _wake_quarantine(self):
         for candidate in self.state.quarantine.values():
-            for chat_id, generation in candidate.targets.items():
-                row = self.service.state.participants.get(chat_id, {}).get(candidate.user_id)
-                if (row is None or not row.active or row.generation != generation
-                        or not self.service.bot_state.is_chat_moderated(chat_id)
-                        or not self.permitted(candidate, chat_id, generation)):
-                    continue
-                self.service._enqueue(chat_id, candidate.user_id, row, "manual")
-                job = self.service.state.queue.get(f"{chat_id}:{candidate.user_id}")
-                if job is not None and not job.attempts:
-                    job.not_before = 0
-                    self.changed()
+            user = self.service.state.users.get(candidate.user_id)
+            if (user is None or candidate.generation != user.generation or not candidate.targets
+                    or not self.permitted(candidate, candidate.targets[0], user.generation)):
+                continue
+            self.service._enqueue(candidate.user_id, "manual")
+            job = self.service.state.queue.get(str(candidate.user_id))
+            if job is not None and not job.attempts:
+                job.not_before = 0
+                self.changed()
 
     def bypass_status(self, t):
         if not self.limits_bypassed():
@@ -244,7 +242,8 @@ class CoronerProtection:
         candidate = self.state.quarantine.get(user_id)
         if candidate is None:
             return
-        candidate.targets.pop(chat_id, None)
+        if chat_id in candidate.targets:
+            candidate.targets.remove(chat_id)
         if not candidate.targets:
             self.state.quarantine.pop(user_id, None)
         self.changed()
@@ -541,10 +540,10 @@ class CoronerProtection:
         self.state.reservations = [entry for entry in self.state.reservations
                                    if entry.at > now - reservation_horizon or entry.state == "pending"]
         for candidate in list(self.state.quarantine.values()):
-            for chat_id, generation in list(candidate.targets.items()):
-                row = self.service.state.participants.get(chat_id, {}).get(candidate.user_id)
-                if (not self.service.bot_state.is_chat_moderated(chat_id) or row is None
-                        or not row.active or row.generation != generation):
+            user = self.service.state.users.get(candidate.user_id)
+            for chat_id in list(candidate.targets):
+                if (user is None or candidate.generation != user.generation or chat_id not in user.chat_ids
+                        or not self.service.bot_state.is_chat_moderated(chat_id)):
                     self.finish_target(candidate.user_id, chat_id)
         if before != size():
             self.changed()
