@@ -69,6 +69,7 @@ class EventSubscriptionCommandsHandler(BaseHandler):
             reply_to_message_id=update.message.id,
         )
 
+    @admin_command
     async def _handle_list_subscribers(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         subscribers = await self._get_event_subscribers(update.effective_chat.id)
         if len(subscribers) == 0:

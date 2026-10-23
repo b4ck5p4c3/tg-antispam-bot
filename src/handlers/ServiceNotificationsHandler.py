@@ -6,6 +6,7 @@ from telegram.constants import ParseMode
 from telegram.error import TelegramError
 from telegram.ext import CallbackContext
 
+from src.handlers.CommandHelp import command_help
 from src.handlers.EventSubscriptionCommandsHandler import EventSubscriptionCommandsHandler
 from src.locale.Locale import Locale
 from src.telegram.EnrichedUpdate import EnrichedUpdate
@@ -21,6 +22,28 @@ class ServiceNotificationsHandler(EventSubscriptionCommandsHandler):
         super().__init__(state)
         self.default_locale = default_locale
 
+    @command_help(
+        {
+            "command": 'as_service subscribe',
+            "locale_id": 'help_as_service_subscribe',
+            "menu_locale_id": "help_menu_as_service",
+            "aliases": ('sub',),
+            "admin": True,
+        },
+        {
+            "command": 'as_service unsubscribe',
+            "locale_id": 'help_as_service_unsubscribe',
+            "aliases": ('unsub',),
+            "admin": True,
+        },
+        {
+            "command": 'as_service list',
+            "locale_id": 'help_as_service_list',
+            "aliases": ('ls',),
+            "admin": True,
+        },
+        module="help_module_service",
+    )
     async def handle_service_command(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         await self.handle_subscription_command(update, context)
 

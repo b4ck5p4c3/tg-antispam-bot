@@ -22,6 +22,7 @@ def admin_command(func):
             return
         return await func(self, update, context, *args, **kwargs)
 
+    wrapper.admin_only = True
     return wrapper
 
 

@@ -8,6 +8,7 @@ from telegram.constants import ChatMemberStatus
 from telegram.error import TelegramError
 from telegram.ext import CallbackContext
 
+from src.handlers.CommandHelp import command_help
 from src.handlers.BaseHandler import get_argument_value
 from src.handlers.ButtonClickHandler import button_click
 from src.handlers.EventSubscriptionCommandsHandler import EventSubscriptionCommandsHandler
@@ -55,6 +56,31 @@ class ReportCommandsHandler(EventSubscriptionCommandsHandler):
     _subscription_event = BotEvent.REPORT
     _subscription_locale_prefix = "report"
 
+    @command_help(
+        {
+            "command": "report", "locale_id": "help_report",
+            "menu_locale_id": "help_menu_report",
+        },
+        {
+            "command": 'report subscribe',
+            "locale_id": 'help_report_subscribe',
+            "aliases": ('sub',),
+            "admin": True,
+        },
+        {
+            "command": 'report unsubscribe',
+            "locale_id": 'help_report_unsubscribe',
+            "aliases": ('unsub',),
+            "admin": True,
+        },
+        {
+            "command": 'report list',
+            "locale_id": 'help_report_list',
+            "aliases": ('ls',),
+            "admin": True,
+        },
+        module="help_module_reports",
+    )
     async def handle_report_command(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         action = get_argument_value(update, 1)
         if action is None:

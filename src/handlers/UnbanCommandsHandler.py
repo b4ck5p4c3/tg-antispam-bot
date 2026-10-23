@@ -5,6 +5,7 @@ from telegram.constants import ChatMemberStatus
 from telegram.error import BadRequest, TelegramError
 from telegram.ext import CallbackContext
 
+from src.handlers.CommandHelp import command_help
 from src.handlers.BaseHandler import BaseHandler
 from src.handlers.ButtonClickHandler import button_click
 from src.telegram.EnrichedUpdate import EnrichedUpdate
@@ -18,6 +19,12 @@ class UnbanKeyboardData(KeyboardData):
 
 
 class UnbanCommandsHandler(BaseHandler):
+    @command_help(
+        {'command': 'unban', 'locale_id': 'help_unban_reply', 'admin': True},
+        {'command': 'unban <user_id>', 'locale_id': 'help_unban_id', 'admin': True},
+        {'command': 'unban <@username>', 'locale_id': 'help_unban_username', 'admin': True},
+        module="help_module_moderation",
+    )
     async def handle_unban_user(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         message = update.message
         args = message.text.split()[1:]

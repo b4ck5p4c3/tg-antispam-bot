@@ -14,14 +14,17 @@ more complex AI-driven analyses. If a message is identified as spam, the bot can
 message or banning the user
 
 The first checked message from each user in each chat remains monitored after the user becomes trusted.
-Every edit is checked again, with all recorded earlier versions (text/caption, OCR transcription, and reply context)
-included in the AI request. The history and edit counter are persisted in `data/state.json` across restarts.
+Every edit is checked again. While the user is tracked by Coroner and is not trusted,
+recorded earlier versions (text/caption, OCR transcription, and reply context) are included in the AI request.
+Saved context is discarded when the user becomes trusted or leaves Coroner monitoring.
+Trusted users retain only the message ID and edit counters, without earlier message contents.
+Counters are also removed when monitoring ends. State is persisted in `data/state.json` across restarts.
 Admins, anonymous admins, linked-channel automatic forwards, and chats without moderation remain exempt.
 
 Set `max_message_edits` in `data/openai_config.json` to change the edit limit (default: `10`; minimum: `0`).
 Edits 1–10 are checked normally; edit 11 deletes the message and bans its author immediately, before OCR or any
 external spam checks. Restart the bot after changing the configuration.
-For users already trusted before history tracking was enabled, the first observed edit starts tracking that message.
+For users already trusted before edit counting was enabled, the first observed edit starts counting that message.
 Telegram does not provide versions from before the bot started recording them.
 
 ## How to run it without B4CKSP4CE infrastructure
@@ -138,6 +141,9 @@ untracked percentage is `(total memberships - observed memberships) / total memb
 using the sum of Telegram member counts, including bots, because the API cannot identify overlapping
 unobserved users. If any chat's count is unavailable or inconsistent, the aggregate
 percentage is unavailable rather than reporting a partial result.
+Each chat also has its own untracked percentage. Coroner pages show chat titles in monospace;
+titles come from the local cache, with a Telegram lookup only when a title is missing.
+Chat IDs remain in application logs.
 
 `<DATA_FOLDER_PATH>/coroner_config.json` is created automatically on first startup
 (default: `data/coroner_config.json`). No manual file creation is needed:
@@ -146,6 +152,7 @@ percentage is unavailable rather than reporting a partial result.
 {
   "dry_run": false,
   "max_requests_per_minute": 450,
+  "min_check_inverval_precent": 10,
   "reference_check_every": 10,
   "reference_user_id": null,
   "reference_chat_id": null,
@@ -153,10 +160,10 @@ percentage is unavailable rather than reporting a partial result.
   "invalid_response_retries": 1,
   "invalid_response_retry_delay_seconds": 1,
   "grades": [
-    {"name": "G1", "max_age_seconds": 86400, "check_interval_seconds": 1800},
-    {"name": "G2", "max_age_seconds": 604800, "check_interval_seconds": 7200},
-    {"name": "G3", "max_age_seconds": 2592000, "check_interval_seconds": 86400},
-    {"name": "G4", "max_age_seconds": null, "check_interval_seconds": 259200}
+    {"name": "G1", "max_age_seconds": 86400, "max_check_interval_seconds": 1800},
+    {"name": "G2", "max_age_seconds": 604800, "max_check_interval_seconds": 7200},
+    {"name": "G3", "max_age_seconds": 2592000, "max_check_interval_seconds": 86400},
+    {"name": "G4", "max_age_seconds": null, "max_check_interval_seconds": 259200}
   ]
 }
 ```
@@ -167,9 +174,16 @@ earliest known join or first observation in any moderated chat. Unknown join dat
 start at G1 from first observation; confirmed joins use their actual date. A later
 join to another chat does not reset the global age. Each user stores a simple `chat_ids`
 array, one last-check timestamp and one next-check timestamp. The global queue contains
-at most one job per user. Each check chooses a random known moderated chat and calls
+at most one job per user. Imported memberships in chats not yet moderated are retained but do not enter
+the queue or the monitored-user count until `/moderate` enables that chat.
+Each check chooses a random known moderated chat and calls
 `getChatMember`; a successful check schedules the next check globally. The grade is
-recorded on removal. Thresholds and intervals are in seconds. Delayed join events can refine
+recorded on removal. The interval is a uniformly random integer from
+`ceil(max_check_interval_seconds * min_check_inverval_precent / 100)` to
+`max_check_interval_seconds`, inclusive (at least one second). The default minimum is 10%.
+The sampled deadline is saved in SQLite and survives maintenance and restarts.
+Existing `check_interval_seconds` config keys are accepted and saved under the new name.
+Thresholds and intervals are in seconds. Delayed join events can refine
 the global first-seen date. Duplicate events describing the same join do not invalidate
 the current check; event-order and duplicate markers remain in memory only.
 
@@ -200,7 +214,7 @@ and unrelated API errors preserve memberships and retry normally. Reference look
 errors retain their safety behavior and never prune the reference via this path.
 Removal history, safety incidents and budget evidence are retained.
 
-Quarantine is user-wide and covers all known chats. After it expires and protection
+Quarantine is user-wide and covers all known moderated chats. After it expires and protection
 permits removal, Coroner processes every target chat, checking membership, admin status,
 the reference and removal budgets before each permanent ban. A chat-specific API
 failure retains that target for retry while other chats can proceed. Global rate limits,

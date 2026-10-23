@@ -70,6 +70,8 @@ async def start_webhook(telegram_application: Application, telegram_api_status_s
     await telegram_application.bot.set_webhook(url=f"{WEBHOOK_HOST}/telegram", allowed_updates=Update.ALL_TYPES)
     webserver = get_webserver(PORT, WEBHOOK_HOST, telegram_api_status_service, telegram_application)
     async with telegram_application:
+        if telegram_application.post_init is not None:
+            await telegram_application.post_init(telegram_application)
         await telegram_application.start()
         try:
             await webserver.serve()

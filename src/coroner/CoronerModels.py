@@ -1,7 +1,7 @@
 from typing import Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 from src.coroner.CoronerProtectionModels import ProtectionConfig, ProtectionState
 
@@ -11,7 +11,10 @@ class Grade(BaseModel):
 
     name: Literal["G1", "G2", "G3", "G4"]
     max_age_seconds: int | None = Field(default=None, gt=0, strict=True)
-    check_interval_seconds: int = Field(gt=0, strict=True)
+    max_check_interval_seconds: int = Field(
+        gt=0, strict=True,
+        validation_alias=AliasChoices("max_check_interval_seconds", "check_interval_seconds"),
+    )
 
 
 class CoronerConfig(BaseModel):
@@ -19,6 +22,7 @@ class CoronerConfig(BaseModel):
 
     dry_run: bool = Field(default=False, strict=True)
     max_requests_per_minute: int = Field(default=450, gt=0, strict=True)
+    min_check_inverval_precent: float = Field(default=10, gt=0, le=100, strict=True, allow_inf_nan=False)
     reference_check_every: int = Field(default=10, gt=0, strict=True)
     reference_user_id: int | None = Field(default=None, gt=0, strict=True)
     reference_chat_id: int | None = Field(default=None, lt=0, strict=True)
@@ -27,10 +31,10 @@ class CoronerConfig(BaseModel):
     invalid_response_retry_delay_seconds: float = Field(default=1, ge=0, allow_inf_nan=False)
     protection: ProtectionConfig = Field(default_factory=ProtectionConfig)
     grades: list[Grade] = Field(default_factory=lambda: [
-        Grade(name="G1", max_age_seconds=86400, check_interval_seconds=1800),
-        Grade(name="G2", max_age_seconds=604800, check_interval_seconds=7200),
-        Grade(name="G3", max_age_seconds=2592000, check_interval_seconds=86400),
-        Grade(name="G4", check_interval_seconds=259200),
+        Grade(name="G1", max_age_seconds=86400, max_check_interval_seconds=1800),
+        Grade(name="G2", max_age_seconds=604800, max_check_interval_seconds=7200),
+        Grade(name="G3", max_age_seconds=2592000, max_check_interval_seconds=86400),
+        Grade(name="G4", max_check_interval_seconds=259200),
     ])
 
     @model_validator(mode="after")

@@ -37,6 +37,8 @@ CORONER_MESSAGES = {
     "reference_waiting": "Waiting for a successful reference check; deletions are blocked.",
     "monitored": "Monitored users (unique): {count}",
     "untracked": "Untracked memberships: {value}",
+    "untracked_chat": "{chat} - {value}",
+    "unknown_chat": "Unknown chat",
     "grade": "{grade}: {count}",
     "queue": "Queued checks: {count}; longest current wait: {wait}",
     "removed": "Removed users in the last 30 days (unique): {counts}",

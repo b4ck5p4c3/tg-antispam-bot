@@ -1,4 +1,5 @@
 import asyncio
+import math
 import random
 import time
 from dataclasses import dataclass
@@ -9,6 +10,7 @@ from telegram.error import BadRequest, ChatMigrated, Forbidden, RetryAfter, Tele
 
 from src.coroner.CoronerApi import CoronerApi, CoronerInterrupted
 from src.coroner.CoronerAccountLinks import CoronerAccountLinks
+from src.coroner.CoronerDisplay import CHAT_REFERENCE, chat_label, log_text, render_html
 from src.coroner.CoronerMessages import CORONER_MESSAGES, coroner_text, duration, shorten
 from src.coroner.CoronerModels import (
     CheckJob, CoronerConfig, CoronerState, Removal, TrackedUser,
@@ -18,6 +20,7 @@ from src.coroner.CoronerStateStore import CoronerStateStore
 from src.coroner.CoronerProtection import CoronerProtection
 from src.coroner.CoronerProtectionModels import SafetySignal
 from src.util.LoggerUtil import LoggerUtil
+from src.util.data.BotState import CachedChannel
 
 
 def is_alive(profile, expected_user_id: int | None = None) -> bool | None:
@@ -76,6 +79,7 @@ class CoronerService:
         self._reference_retry_at = 0.0
         self._reference_pending = False
         self._membership_events: dict[tuple[int, int], MembershipEvent] = {}
+        self._chat_name_locks: dict[int, asyncio.Lock] = {}
         self.application = None
         try:
             self.config = self.store.load(self.CONFIG_FILE, CoronerConfig)
@@ -101,6 +105,8 @@ class CoronerService:
         )
         self.protection = CoronerProtection(self)
         self.account_links = CoronerAccountLinks(self)
+        if self._storage_healthy:
+            self.bot_state.set_message_history_tracking(self.is_tracking_member)
         # Recovery decisions must be durable before polling/webhook handling starts.
         if self._storage_healthy and self._revision != self._saved_revision:
             try:
@@ -113,6 +119,33 @@ class CoronerService:
 
     def t(self, key, **values):
         return coroner_text(self.locale, key, **values)
+
+    chat_label = staticmethod(chat_label)
+
+    def moderated_chat_ids(self):
+        # Private chat/user IDs cannot be Coroner membership scopes.
+        return {chat_id for chat_id in self.bot_state.moderated_chat_ids if chat_id < 0}
+
+    def is_tracking_member(self, chat_id, user_id):
+        user = self.state.users.get(user_id)
+        return user is not None and chat_id in user.chat_ids and chat_id in self.moderated_chat_ids()
+
+    async def display_text(self, text):
+        titles = {}
+        for chat_id in dict.fromkeys(int(match[1]) for match in CHAT_REFERENCE.finditer(text)):
+            async with self._chat_name_locks.setdefault(chat_id, asyncio.Lock()):
+                cached = self.bot_state.get_cached_channel(chat_id)
+                if cached is None or not cached.title:
+                    try:
+                        chat = await self.api.call(self.bot.get_chat, chat_id=chat_id, error_chat_id=chat_id)
+                        title = chat.title or " ".join(filter(None, (chat.first_name, chat.last_name))) or chat.username
+                        if title:
+                            cached = CachedChannel(id=chat_id, title=title)
+                            self.bot_state.set_cached_channel(cached)
+                    except (TelegramError, CoronerInterrupted):
+                        pass  # The API wrapper records the cause; IDs stay in the application log.
+                titles[chat_id] = cached.title if cached and cached.title else self.t("unknown_chat")
+        return render_html(text, titles)
 
     def _changed(self):
         self._revision += 1
@@ -154,20 +187,23 @@ class CoronerService:
         self.logger.info("CORONER user %s no longer monitored in chat %s; status=%s source=%s",
                          user_id, chat_id, status, source)
         user.chat_ids.remove(chat_id)
+        self.bot_state.remove_message_edit_history(chat_id, user_id)
         self.protection.finish_target(user_id, chat_id)
         self._membership_events.pop((chat_id, user_id), None)
-        if not user.chat_ids:
-            self.state.users.pop(user_id, None)
+        if not self._moderated_chats_for(user):
             self.state.queue.pop(str(user_id), None)
             self.state.protection.quarantine.pop(user_id, None)
+            self.bot_state.prune_message_edit_histories()
+        if not user.chat_ids:
+            self.state.users.pop(user_id, None)
             self.logger.info("CORONER user %s removed from monitoring: no known chats remain", user_id)
         self._changed()
 
     def _error(self, chat_id, key, message, *, detail=None, **values):
         text = self.t(message, **values)
         if chat_id is not None:
-            text = self.t("error_chat", chat_id=chat_id, text=text)
-        self.logger.error("%s%s", text, (
+            text = self.t("error_chat", chat_id=self.chat_label(chat_id), text=text)
+        self.logger.error("%s%s", log_text(text), (
             f" ({type(detail).__name__}: {CoronerApi.safe_detail(detail)})"
             if detail is not None else ""
         ))
@@ -282,16 +318,27 @@ class CoronerService:
             },
         )
 
+    def _moderated_chats_for(self, user):
+        moderated = self.moderated_chat_ids()
+        return [chat_id for chat_id in user.chat_ids if chat_id in moderated]
+
     def _sync_chats(self):
-        current = set(self.bot_state.moderated_chat_ids)
-        if current == set(self.state.moderated_chats):
-            return
-        for user_id, user in list(self.state.users.items()):
-            for chat_id in list(user.chat_ids):
-                if chat_id not in current:
-                    self._mark_not_present(chat_id, user_id, "abandoned", "moderation_disabled")
-        self.state.moderated_chats = sorted(current)
-        self._changed()
+        current = self.moderated_chat_ids()
+        previous = set(self.state.moderated_chats)
+        if current != previous:
+            abandoned = previous - current
+            for user_id, user in list(self.state.users.items()):
+                for chat_id in list(user.chat_ids):
+                    if chat_id in abandoned:
+                        self._mark_not_present(chat_id, user_id, "abandoned", "moderation_disabled")
+            self.state.moderated_chats = sorted(current)
+            self._changed()
+        # Imports can contain chats that have not been enabled with /moderate yet.
+        # Keep those memberships, but never enqueue or retain checks for them alone.
+        for job in list(self.state.queue.values()):
+            user = self.state.users.get(job.user_id)
+            if user is None or not self._moderated_chats_for(user):
+                self._finish_job(job)
 
     def _membership_changed(self, user_id, user):
         user.generation += 1
@@ -408,7 +455,7 @@ class CoronerService:
         if self.config.reference_chat_id == old_id:
             config = self.config.model_copy(update={"reference_chat_id": new_id})
             await self._save_config(config)
-        self.state.moderated_chats = sorted(set(self.bot_state.moderated_chat_ids))
+        self.state.moderated_chats = sorted(self.moderated_chat_ids())
         self._generation += 1
         self._changed()
         await self.save()
@@ -416,7 +463,7 @@ class CoronerService:
     def _enqueue(self, user_id, source="scheduled") -> bool:
         user = self.state.users.get(user_id)
         key = str(user_id)
-        if user is None or not user.chat_ids or key in self.state.queue:
+        if user is None or not self._moderated_chats_for(user) or key in self.state.queue:
             return False
         self.state.queue[key] = CheckJob(
             user_id=user_id, generation=user.generation,
@@ -438,7 +485,7 @@ class CoronerService:
         added = existing = 0
         now = time.time()
         for user_id in self.state.users:
-            if user_id == self.bot.id:
+            if user_id == self.bot.id or not self._moderated_chats_for(self.state.users[user_id]):
                 continue
             if grade != "ALL" and self._user_grade(user_id, now).name != grade:
                 continue
@@ -452,6 +499,7 @@ class CoronerService:
     async def _maintenance(self, context):
         try:
             self._sync_chats()
+            self.bot_state.prune_message_edit_histories()
             now = time.time()
             self._refresh_grades(now)
             self._recent_errors(now)
@@ -464,15 +512,13 @@ class CoronerService:
                 self._changed()
             if self.state.status == "running":
                 for user_id, user in self.state.users.items():
-                    if user_id == self.bot.id:
+                    if user_id == self.bot.id or not self._moderated_chats_for(user):
                         continue
                     grade = self._user_grade(user_id, now)
-                    due = (user.last_successful_check + grade.check_interval_seconds
-                           if user.last_successful_check is not None else 0)
-                    if due != user.next_check_at:
-                        user.next_check_at = due
+                    if user.last_successful_check is not None and user.next_check_at <= 0:
+                        user.next_check_at = user.last_successful_check + self._check_interval(grade)
                         self._changed()
-                    if due <= now:
+                    if user.next_check_at <= now:
                         self._enqueue(user_id)
             await self.save()
         except Exception as error:
@@ -485,7 +531,7 @@ class CoronerService:
             raise CoronerInterrupted()
         if job is not None:
             user = self.state.users.get(job.user_id)
-            if (user is None or not user.chat_ids or user.generation != job.generation
+            if (user is None or not self._moderated_chats_for(user) or user.generation != job.generation
                     or self.state.queue.get(job.key) is not job):
                 raise CoronerInterrupted()
             if job.chat_id is not None and (job.chat_id not in user.chat_ids
@@ -603,6 +649,13 @@ class CoronerService:
             if not candidates:
                 return
             job = min(candidates, key=lambda entry: entry.enqueued_at)
+            # chat_id is the previous attempt's context, not the identity of this global job.
+            if job.chat_id is not None:
+                if not self.bot_state.is_chat_moderated(job.chat_id):
+                    self.logger.info("CORONER reset obsolete check context for user %s: chat %s is not moderated",
+                                     job.user_id, job.chat_id)
+                job.chat_id = None
+                self._changed()
             delay = 0.01
             try:
                 self._guard(generation, job)
@@ -610,7 +663,8 @@ class CoronerService:
             except CoronerInterrupted:
                 # Keep valid jobs on stop; discard obsolete joins or abandoned chats.
                 user = self.state.users.get(job.user_id)
-                if user is None or user.generation != job.generation:
+                if (user is None or not self._moderated_chats_for(user)
+                        or user.generation != job.generation):
                     self._finish_job(job)
                 elif job.chat_id not in user.chat_ids:
                     job.chat_id = None
@@ -642,9 +696,14 @@ class CoronerService:
     def _complete_check(self, job, user):
         user.last_successful_check = time.time()
         grade = self._user_grade(job.user_id, user.last_successful_check)
-        user.next_check_at = user.last_successful_check + grade.check_interval_seconds
+        user.next_check_at = user.last_successful_check + self._check_interval(grade)
         self._finish_job(job)
         self._changed()
+
+    def _check_interval(self, grade):
+        maximum = grade.max_check_interval_seconds
+        minimum = max(1, math.ceil(maximum * self.config.min_check_inverval_precent / 100))
+        return random.randint(minimum, maximum)
 
     async def _process_job(self, job, generation):
         while job.user_id in self.state.users:
@@ -673,7 +732,8 @@ class CoronerService:
             job.chat_id = None
             if await self._check_reference(generation) is not True:
                 return
-        job.chat_id = random.choice(user.chat_ids)
+        guard()
+        job.chat_id = random.choice(self._moderated_chats_for(user))
         self._changed()
         try:
             member = await self.api.call(
@@ -726,6 +786,9 @@ class CoronerService:
             return
         retry_at = 0
         for chat_id in list(candidate.targets):
+            if chat_id not in self._moderated_chats_for(user):
+                self.protection.finish_target(job.user_id, chat_id)
+                continue
             job.chat_id = chat_id
             if not self.protection.permitted(candidate, chat_id, user.generation):
                 job.not_before = max(time.time() + 1, min(candidate.ready_at,
@@ -757,10 +820,10 @@ class CoronerService:
                 self._changed()
                 if not await self.save(force=True):
                     raise CoronerInterrupted()
-                if job.user_id not in self.state.users:
+                if job.user_id not in self.state.users or not self._moderated_chats_for(user):
                     return
                 continue
-            if job.user_id not in self.state.users:
+            if job.user_id not in self.state.users or not self._moderated_chats_for(user):
                 return
             if chat_id in candidate.targets:
                 job.not_before = max(job.not_before, retry_at)
@@ -906,16 +969,16 @@ class CoronerService:
                 await self.save()
             return result
 
-        targets = set(self.bot_state.moderated_chat_ids)
+        targets = self.moderated_chat_ids()
         lookup_chats = sorted(targets) if targets else [chat_id]
         for target in lookup_chats:
             if not await self.bot_state.is_admin(user_id, target, telegram_request=telegram_request):
                 return False
-        return targets == set(self.bot_state.moderated_chat_ids)
+        return targets == self.moderated_chat_ids()
 
     async def status_text(self, locale):
         t = lambda key, **values: coroner_text(locale, key, **values)
-        chat_ids = set(self.bot_state.moderated_chat_ids)
+        chat_ids = self.moderated_chat_ids()
         totals = {}
         for chat_id in sorted(chat_ids):
             try:
@@ -929,11 +992,13 @@ class CoronerService:
         monitored = set()
         observed_total = member_total = 0
         complete_counts = bool(chat_ids)
+        chat_untracked = []
         for chat_id in sorted(chat_ids):
             active = {user_id for user_id, user in self.state.users.items() if chat_id in user.chat_ids}
             # Telegram counts memberships, including this bot, separately in each chat.
             observed = len(set(active) | {self.bot.id})
             total = totals.get(chat_id)
+            value = t("unavailable")
             if type(total) is not int or total <= 0:
                 complete_counts = False
             elif observed > total:
@@ -942,11 +1007,13 @@ class CoronerService:
             else:
                 member_total += total
                 observed_total += observed
+                value = f"{100 * (total - observed) / total:.2f}%"
+            chat_untracked.append(t("untracked_chat", chat=self.chat_label(chat_id), value=value))
             monitored.update(user_id for user_id in active if user_id != self.bot.id)
         untracked = (f"{100 * (member_total - observed_total) / member_total:.2f}%"
                      if complete_counts else t("unavailable"))
         jobs = [job for job in self.state.queue.values()
-                if job.user_id in self.state.users and job.user_id not in self.state.protection.quarantine]
+                if job.user_id in monitored and job.user_id not in self.state.protection.quarantine]
         counts = {grade.name: 0 for grade in self.config.grades}
         removed = dict.fromkeys(counts, 0)
         for user_id in monitored:
@@ -970,7 +1037,7 @@ class CoronerService:
             lines.append(t("reference_missing"))
         else:
             lines.append(t("reference", user_id=self.config.reference_user_id,
-                           chat_id=self.config.reference_chat_id, every=self.config.reference_check_every))
+                           chat_id=self.chat_label(self.config.reference_chat_id), every=self.config.reference_check_every))
         if self.state.last_reference_at is None:
             lines.append(t("reference_never"))
         else:
@@ -979,6 +1046,8 @@ class CoronerService:
         if self._reference_pending:
             lines.append(t("reference_waiting"))
         lines.extend(["", t("monitored", count=len(monitored)), t("untracked", value=untracked)])
+        lines.extend(chat_untracked)
+        lines.append("")
         lines.extend(t("grade", grade=name, count=count) for name, count in counts.items())
         lines.append(t("queue", count=len(jobs), wait=duration(max(
             (now - job.enqueued_at for job in jobs), default=0,
@@ -991,4 +1060,4 @@ class CoronerService:
                 repeated = t("repeated", count=entry.count) if entry.count > 1 else ""
                 lines.append(t("error_entry", age=duration(now - entry.last_seen),
                                text=shorten(entry.text, 420), repeated=repeated))
-        return shorten("\n".join(lines), 4000)
+        return "\n".join(lines)

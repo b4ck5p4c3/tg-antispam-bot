@@ -111,6 +111,8 @@ class CoronerProtection:
         self.changed()
 
     def record_check(self, user_id, chat_id, result, now=None, *, primary=True):
+        if user_id == self.service.config.reference_user_id or chat_id not in self.service.moderated_chat_ids():
+            return
         now = time.time() if now is None else now
         user = self.service.state.users[user_id]
         recent = user.last_alive_at is not None and now - user.last_alive_at <= self.config.recent_alive_seconds
@@ -164,7 +166,7 @@ class CoronerProtection:
             candidate = QuarantineCandidate(
                 user_id=job.user_id, grade=self.service._user_grade(job.user_id, now).name,
                 detected_at=now, ready_at=now + self.config.quarantine_seconds,
-                targets=list(user.chat_ids), generation=user.generation,
+                targets=self.service._moderated_chats_for(user), generation=user.generation,
             )
             self.state.quarantine[job.user_id] = candidate
             day = self.state.days.setdefault(self.day(now).isoformat(), DayObservation())
@@ -274,12 +276,12 @@ class CoronerProtection:
             if signal.user_id is not None:
                 text += self.service.t("api_subject", user_id=signal.user_id)
             if signal.chat_id is not None:
-                text = self.service.t("error_chat", chat_id=signal.chat_id, text=text)
+                text = self.service.t("error_chat", chat_id=self.service.chat_label(signal.chat_id), text=text)
             return text
         return self.service.t("quota_reason" if signal.kind == "quota" else "safety_reason",
                               kind=self.service.t("safety_kind_" + signal.kind),
                               value=f"{signal.value:g}", threshold=f"{signal.threshold:g}",
-                              scope=str(signal.chat_id) if signal.chat_id is not None else (signal.grade or "ALL"))
+                              scope=self.service.chat_label(signal.chat_id) if signal.chat_id is not None else (signal.grade or "ALL"))
 
     async def approve_anomalies(self, user_id):
         if not self.service._storage_healthy or not self.service._config_healthy:
@@ -334,10 +336,13 @@ class CoronerProtection:
 
     def measurements(self, now=None):
         now = time.time() if now is None else now
+        chats = self.service.moderated_chat_ids()
+        checks = [record for record in self.state.checks
+                  if record.user_id != self.service.config.reference_user_id and record.chat_id in chats]
         false = self.config.false_results
-        valid = [record for record in self.state.checks
+        valid = [record for record in checks
                  if record.at > now - false.window_seconds and record.result != "unknown"]
-        primary = [record for record in self.state.checks if record.at > now - false.window_seconds and record.primary]
+        primary = [record for record in checks if record.at > now - false.window_seconds and record.primary]
         result = [self._rate("false:global", "false", false, self._latest(valid), now, attempts=primary)]
         grouped = {}
         primary_grouped = {}
@@ -345,17 +350,17 @@ class CoronerProtection:
             primary_grouped.setdefault(record.chat_id, []).append(record)
         for record in valid:
             grouped.setdefault(record.chat_id, []).append(record)
-        for chat_id in sorted(set(self.service.bot_state.moderated_chat_ids)):
+        for chat_id in sorted(chats):
             result.append(self._rate(f"false:{chat_id}", "false", false,
                                      self._latest(grouped.get(chat_id, [])), now, chat_id=chat_id,
                                      attempts=primary_grouped.get(chat_id, [])))
         transition = self.config.alive_transitions
-        recent = self._latest([record for record in self.state.checks
+        recent = self._latest([record for record in checks
                                if record.at > now - transition.window_seconds
                                and record.recently_alive and record.result != "unknown"])
         result.append(self._rate("transitions", "transitions", transition, recent, now))
         profiles = self.config.profile_inconsistencies
-        records = self._latest([record for record in self.state.checks
+        records = self._latest([record for record in checks
                                 if record.at > now - profiles.window_seconds])
         unknown = sum(record.result == "unknown" for record in records)
         result.append(dict(key="profiles", kind="profiles", chat_id=None, grade=None,
@@ -420,7 +425,7 @@ class CoronerProtection:
         for key, signal in list(self.state.reasons.items()):
             if signal.kind in ("false", "transitions", "profiles", "candidates", "activity") and key not in active:
                 self._resolve(key)
-        if (self.state.populations_chats == sorted(set(self.service.bot_state.moderated_chat_ids))
+        if (self.state.populations_chats == sorted(self.service.moderated_chat_ids())
                 and self.state.populations and all(value > 0 for value in self.state.populations.values())
                 and now - self.state.populations_at < self.config.member_count_cache_seconds):
             self._resolve("population-unavailable")
@@ -446,7 +451,7 @@ class CoronerProtection:
 
     def _refresh_quota_reasons(self, now):
         limits = {limit.name: limit for limit in self.config.removal_limits}
-        chats = set(self.service.bot_state.moderated_chat_ids)
+        chats = self.service.moderated_chat_ids()
         populations = self.state.populations
         for key, signal in list(self.state.reasons.items()):
             if signal.kind != "quota":
@@ -550,7 +555,7 @@ class CoronerProtection:
 
     async def populations(self):
         now = time.time()
-        chats = sorted(set(self.service.bot_state.moderated_chat_ids))
+        chats = sorted(self.service.moderated_chat_ids())
         if (self.state.populations_chats == chats
                 and now - self.state.populations_at < self.config.member_count_cache_seconds):
             return dict(self.state.populations)
@@ -561,7 +566,7 @@ class CoronerProtection:
             if type(count) is not int or count <= 0:
                 raise ValueError("Telegram returned an invalid member count")
             populations[chat_id] = count
-        if chats != sorted(set(self.service.bot_state.moderated_chat_ids)):
+        if chats != sorted(self.service.moderated_chat_ids()):
             raise ValueError("Moderated chats changed while member counts were collected")
         self.state.populations, self.state.populations_at = populations, now
         self.state.populations_chats = chats

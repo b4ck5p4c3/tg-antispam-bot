@@ -2,12 +2,12 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from collections.abc import Callable
-from html import escape
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
 
 from src.coroner.CoronerApi import CoronerApi, CoronerInterrupted
+from src.coroner.CoronerDisplay import account_label
 
 
 @dataclass
@@ -97,10 +97,10 @@ class CoronerAccountLinks:
             text += "\n\n" + display.t("account_links_failed")
         if display.rejected:
             ids = [button.text for button in display.links if button.url in display.rejected]
-            text = escape(text) + "\n\n" + escape(display.t("profile_buttons_unavailable")) + "\n"
-            text += ", ".join(f"<code>{escape(user_id)}</code>" for user_id in ids)
-        params = dict(chat_id=display.chat_id, text=text, reply_markup=self._markup(display, links),
-                      parse_mode="HTML" if display.rejected else None, error_chat_id=display.chat_id)
+            text += "\n\n" + display.t("profile_buttons_unavailable") + "\n" + ", ".join(map(account_label, ids))
+        params = dict(chat_id=display.chat_id, text=await self.service.display_text(text),
+                      reply_markup=self._markup(display, links),
+                      parse_mode="HTML", error_chat_id=display.chat_id)
         async with display.lock:
             self._guard(display)
             if display.message_id is None:

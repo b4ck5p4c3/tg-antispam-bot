@@ -103,7 +103,7 @@ class CoronerProtectionView:
         metrics = self.protection.measurements(now)
         cards = []
         for metric in metrics:
-            scope = str(metric["chat_id"]) if metric["chat_id"] is not None else (metric["grade"] or "ALL")
+            scope = self.service.chat_label(metric["chat_id"]) if metric["chat_id"] is not None else (metric["grade"] or "ALL")
             lines = [self.t("detector_title", kind=self.t("safety_kind_" + metric["kind"]), scope=scope,
                             period=duration(metric["window"]))]
             lines.append(self.t("detector_enabled") if metric["enabled"] else self.t(
@@ -163,11 +163,12 @@ class CoronerProtectionView:
                 counts[item.chat_id] = counts.get(item.chat_id, 0) + 1
             cards.append(self.t("limit_summary", name=limit.name, period=duration(limit.window_seconds),
                                 count=len(entries), percent=limit.global_percent, local_percent=limit.chat_percent,
-                                chats=shorten(str(counts), 300)) + "\n" + self.t("count_history", history=self._history_stats(
+                                chats=shorten(", ".join(f"{self.service.chat_label(chat_id)}: {count}"
+                                                       for chat_id, count in sorted(counts.items())), 300)) + "\n" + self.t("count_history", history=self._history_stats(
                                     self._history_with_current("budget:" + limit.name, len(entries), now,
                                                                limit.window_seconds))))
-        population = sum(state.populations.values()) if state.populations_chats == sorted(set(
-            self.service.bot_state.moderated_chat_ids)) and now - state.populations_at < cfg.member_count_cache_seconds else 0
+        population = sum(state.populations.values()) if state.populations_chats == sorted(
+            self.service.moderated_chat_ids()) and now - state.populations_at < cfg.member_count_cache_seconds else 0
         removed_lines = [self.t("removed_period", days=cfg.removal_statistics_days)]
         for grade in ("G1", "G2", "G3", "G4"):
             rows = [entry for entry in self.service.state.removals
@@ -189,7 +190,7 @@ class CoronerProtectionView:
         if bypass is not None:
             buttons.append([bypass])
         buttons += [[self.button("update", "detectors", page=page), self.button("back", "status")]]
-        return shorten(text, 4000), InlineKeyboardMarkup(buttons)
+        return text, InlineKeyboardMarkup(buttons)
 
     def _account_page(self, lines, ids, page, controls):
         # Reserve exactly the controls and navigation needed on each page.
@@ -232,7 +233,7 @@ class CoronerProtectionView:
                 chats[chat_id] = chats.get(chat_id, 0) + 1
         lines.append(", ".join(f"{grade}: {count}" for grade, count in grades.items()))
         lines.append(self.t("review_chat_distribution") + " " + shorten(
-            ", ".join(f"{chat_id}: {count}" for chat_id, count in sorted(chats.items())), 300))
+            ", ".join(f"{self.service.chat_label(chat_id)}: {count}" for chat_id, count in sorted(chats.items())), 300))
         bypass = self.bypass_button(page)
         text, buttons, page, pages = self._account_page(lines, ids, page, 4 + (bypass is not None))
         buttons += self._navigation("review", page, pages)

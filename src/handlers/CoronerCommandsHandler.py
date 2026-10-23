@@ -2,6 +2,7 @@ from telegram import Chat, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
 from telegram.ext import CallbackContext
 
+from src.handlers.CommandHelp import command_help
 from src.coroner.CoronerApi import CoronerInterrupted
 from src.coroner.CoronerMessages import coroner_text
 from src.coroner.CoronerService import CoronerService
@@ -45,8 +46,8 @@ class CoronerCommandsHandler:
     async def _reply(self, update, text):
         chat_id = update.effective_chat.id
         await self.service.api.call(
-            self.service.bot.send_message, chat_id=chat_id, text=text,
-            parse_mode=None, error_chat_id=chat_id,
+            self.service.bot.send_message, chat_id=chat_id, text=await self.service.display_text(text),
+            parse_mode="HTML", error_chat_id=chat_id,
         )
 
     async def _display(self, update, *, edit=False):
@@ -57,6 +58,25 @@ class CoronerCommandsHandler:
             chat_id, update.callback_query.message.message_id if edit else None,
         )
 
+    @command_help(
+        {'command': 'coroner', 'locale_id': 'help_coroner_status', 'admin': True},
+        {'command': 'coroner help', 'locale_id': 'help_coroner_help', 'admin': True},
+        {'command': 'coroner ref <user_id>', 'locale_id': 'help_coroner_ref', 'admin': True},
+        {'command': 'coroner start', 'locale_id': 'help_coroner_start', 'admin': True},
+        {'command': 'coroner stop', 'locale_id': 'help_coroner_stop', 'admin': True},
+        {
+            "command": 'coroner run <G1|G2|G3|G4|ALL>',
+            "locale_id": 'help_coroner_run',
+            "admin": True,
+        },
+        {'command': 'coroner detectors', 'locale_id': 'help_coroner_detectors', 'admin': True},
+        {'command': 'coroner quarantine', 'locale_id': 'help_coroner_quarantine', 'admin': True},
+        {'command': 'coroner review', 'locale_id': 'help_coroner_review', 'admin': True},
+        {'command': 'coroner acknowledge', 'locale_id': 'help_coroner_acknowledge', 'admin': True},
+        {'command': 'coroner bypass', 'locale_id': 'help_coroner_bypass', 'admin': True},
+        {'command': 'coroner bypass stop', 'locale_id': 'help_coroner_bypass_stop', 'admin': True},
+        module="help_module_coroner",
+    )
     async def handle_command(self, update: EnrichedUpdate, context: CallbackContext):
         chat = update.effective_chat
         user = update.effective_user
@@ -105,7 +125,8 @@ class CoronerCommandsHandler:
                 elif chat.type == Chat.PRIVATE:
                     notice = coroner_text(update.locale, "ref_group_only")
                 elif await self.service.set_reference(int(args[1]), chat.id):
-                    notice = coroner_text(update.locale, "ref_saved", user_id=int(args[1]), chat_id=chat.id)
+                    notice = coroner_text(update.locale, "ref_saved", user_id=int(args[1]),
+                                          chat_id=self.service.chat_label(chat.id))
                 else:
                     notice = coroner_text(update.locale, "ref_failed")
             elif action == "run":

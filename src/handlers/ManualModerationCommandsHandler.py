@@ -2,6 +2,7 @@ from telegram.error import TelegramError
 from telegram.ext import CallbackContext
 from telegram.helpers import escape_markdown
 
+from src.handlers.CommandHelp import command_help
 from src.handlers.BaseHandler import BaseHandler, admin_command, get_argument_value, get_int_argument_value
 from src.handlers.spam_filters.ForwardSpamFilter.ForwardSpamFilter import get_forward_channel_id, get_channel_id
 from src.telegram.EnrichedUpdate import EnrichedUpdate
@@ -30,6 +31,12 @@ def _extract_community_id(update: EnrichedUpdate) -> int | None:
 class ManualModerationCommandsHandler(BaseHandler):
 
     @admin_command
+    @command_help(
+        {'command': 'ban', 'locale_id': 'help_ban_reply'},
+        {'command': 'ban <user_id>', 'locale_id': 'help_ban_id'},
+        {'command': 'ban <@username>', 'locale_id': 'help_ban_username'},
+        module="help_module_moderation",
+    )
     async def handle_ban_user(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Handles the /ban command."""
         reply_message = update.message.reply_to_message
@@ -115,6 +122,11 @@ class ManualModerationCommandsHandler(BaseHandler):
             )
 
     @admin_command
+    @command_help(
+        {'command': 'banc', 'locale_id': 'help_banc_reply'},
+        {'command': 'banc <channel_id>', 'locale_id': 'help_banc_id'},
+        module="help_module_moderation",
+    )
     async def handle_ban_community(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         """Handles the /banc command."""
         community_id = _extract_community_id(update)

@@ -2,6 +2,55 @@ from pydantic import BaseModel
 
 
 class Locale(BaseModel):
+    help_menu_moderate: str = "Enable moderation or list moderated chats (/moderate ls)."
+    help_menu_report: str = "Report spam and manage report subscriptions."
+    help_menu_as_service: str = "Manage service notification subscriptions."
+    help_moderate_ls: str = "List all moderated chats."
+    moderate_usage: str = "Use /moderate to enable moderation in this chat, or /moderate ls to list moderated chats."
+    moderated_chats_header: str = "Moderated chats:"
+    moderated_chats_empty: str = "No chats are being moderated."
+    moderated_chat_unavailable: str = "Unavailable chat"
+    moderated_chat_entry: str = "{index}. {chat} ({chat_id})"
+    help_legend: str = '🔒 Administrators only. <parameter> required; [parameter] optional. Shortcuts appear in parentheses.'
+    help_module_general: str = 'Bot help'
+    help_module_configuration: str = 'Antispam configuration'
+    help_module_moderation: str = 'Manual moderation'
+    help_module_reports: str = 'Spam reports'
+    help_module_service: str = 'Service notifications'
+    help_module_coroner: str = 'Coroner'
+    help_command_info: str = 'Show available commands.'
+    help_moderate: str = 'Enable moderation in this chat.'
+    help_abandon: str = 'Stop moderating this chat.'
+    help_set_audit_log: str = 'Use this chat as the audit log.'
+    help_unset_audit_log: str = 'Remove the configured audit log chat.'
+    help_ban_reply: str = 'Reply to a message to ban its author and delete it.'
+    help_ban_id: str = 'Ban a user by numeric ID in this chat.'
+    help_ban_username: str = 'Ban a user by username from the saved user cache.'
+    help_banc_reply: str = 'Reply to a forwarded message to block its source channel.'
+    help_banc_id: str = 'Block a source channel by ID in all moderated chats.'
+    help_unban_reply: str = 'Reply to a registered ban audit entry to unban the user.'
+    help_unban_id: str = 'Find bans by user ID and choose chats to unban them.'
+    help_unban_username: str = 'Find bans by cached username and choose chats to unban them.'
+    help_report: str = 'Reply to a spam message to notify subscribed administrators.'
+    help_report_subscribe: str = 'Subscribe to spam reports.'
+    help_report_unsubscribe: str = 'Unsubscribe from spam reports.'
+    help_report_list: str = 'List subscribers to spam reports.'
+    help_as_service_subscribe: str = 'Subscribe to service incident notifications.'
+    help_as_service_unsubscribe: str = 'Unsubscribe from service incident notifications.'
+    help_as_service_list: str = 'List subscribers to service incident notifications.'
+    help_coroner_status: str = 'Show global statistics and recent errors.'
+    help_coroner_help: str = 'Show detailed Coroner help.'
+    help_coroner_ref: str = 'Save a live reference account from a moderated group.'
+    help_coroner_start: str = 'Verify the reference account and start checks across moderated chats.'
+    help_coroner_stop: str = 'Stop checks; observation continues.'
+    help_coroner_run: str = 'Queue checks for a grade; Coroner must be running.'
+    help_coroner_detectors: str = 'Show anomaly detector statistics and thresholds.'
+    help_coroner_quarantine: str = 'Show quarantined accounts and profile links.'
+    help_coroner_review: str = 'Review deletion candidates.'
+    help_coroner_acknowledge: str = 'Release a resolved protection incident.'
+    help_coroner_bypass: str = 'Temporarily bypass removal percentage limits for the configured duration.'
+    help_coroner_bypass_stop: str = 'Cancel the removal percentage limit bypass.'
+
     openai_user_ban_notification: str
     chat_added_to_moderate: str
     chat_removed_from_moderate: str
@@ -111,6 +160,8 @@ class Locale(BaseModel):
     coroner_reference_waiting: str = "Waiting for a successful reference check; deletions are blocked."
     coroner_monitored: str = "Monitored users (unique): {count}"
     coroner_untracked: str = "Untracked memberships: {value}"
+    coroner_untracked_chat: str = "{chat} - {value}"
+    coroner_unknown_chat: str = "Unknown chat"
     coroner_grade: str = "{grade}: {count}"
     coroner_queue: str = "Queued checks: {count}; longest current wait: {wait}"
     coroner_removed: str = "Removed users in the last 30 days (unique): {counts}"

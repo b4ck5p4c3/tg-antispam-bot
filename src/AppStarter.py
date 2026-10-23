@@ -4,12 +4,14 @@ from http import HTTPStatus
 import uvicorn
 from asgiref.wsgi import WsgiToAsgi
 from flask import Flask, Response, request
+from telegram.error import TelegramError
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ApplicationBuilder, CallbackQueryHandler, TypeHandler, ChatMemberHandler
 
 from src.handlers.ButtonClickHandler import ButtonClickHandler
 from src.handlers.CacheHandler import CacheHandler
 from src.handlers.ConfigurationCommandsHandler import ConfigurationCommandsHandler
 from src.handlers.CoronerCommandsHandler import CoronerCommandsHandler
+from src.handlers.HelpCommandsHandler import HelpCommandsHandler
 from src.coroner.CoronerService import CoronerService
 from src.handlers.ManualModerationCommandsHandler import ManualModerationCommandsHandler
 from src.handlers.ReportCommandsHandler import ReportCommandsHandler
@@ -107,6 +109,8 @@ class BotBuilder:
         if self.telegram_application is None:
             raise ValueError("Telegram application is not set")
         state = self.__get_state()
+        self.help_commands_handler = HelpCommandsHandler(state)
+        self.__add_command_handler("help", self.help_commands_handler.handle_help)
         openai_config = self.__get_openai_config()
         service_notifications_handler = ServiceNotificationsHandler(
             state,
@@ -132,7 +136,6 @@ class BotBuilder:
         coroner_commands = CoronerCommandsHandler(coroner)
         button_click_handler.set_listeners(report_commands_handler, unban_commands_handler, coroner_commands)
         self.telegram_application.bot_data["coroner"] = coroner
-        self.__add_command_handler("coroner", coroner_commands.handle_command, block=False)
         self.telegram_application.add_handler(TypeHandler(Update, coroner.observe_update), group=-2)
         self.telegram_application.add_handler(CallbackQueryHandler(
             self.__with_enriched_update(button_click_handler.handle_button_click_and_route),
@@ -148,6 +151,7 @@ class BotBuilder:
         self.__add_command_handler("banc", manual_commands_handler.handle_ban_community)
         self.__add_command_handler("report", report_commands_handler.handle_report_command)
         self.__add_command_handler("as_service", service_notifications_handler.handle_service_command)
+        self.__add_command_handler("coroner", coroner_commands.handle_command, block=False)
         self.telegram_application.add_handler(
             TypeHandler(Update, self.__with_enriched_update(cache_handler.handle_update)),
             group=-1
@@ -165,8 +169,24 @@ class BotBuilder:
             MessageHandler(filters.UpdateType.MESSAGES, self.__with_enriched_update(antispam_filters.apply)))
         openai_watchdog.start(self.telegram_application)
         coroner.install(self.telegram_application)
+        previous_post_init = self.telegram_application.post_init
+
+        async def post_init(application: Application) -> None:
+            if previous_post_init is not None:
+                await previous_post_init(application)
+            try:
+                await application.bot.set_my_commands(
+                    self.help_commands_handler.get_bot_commands(
+                        self.__get_locale_factory().get_default_locale(),
+                    ),
+                )
+            except TelegramError as error:
+                self.help_commands_handler.logger.warning("Could not update command menu: %s", error)
+
+        self.telegram_application.post_init = post_init
 
     def __add_command_handler(self, command: str, handler, *, block: bool = True):
+        self.help_commands_handler.register(handler)
         self.telegram_application.add_handler(CommandHandler(
             command, self.__with_enriched_update(handler), filters=filters.UpdateType.MESSAGE, block=block,
         ))

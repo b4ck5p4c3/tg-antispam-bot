@@ -45,7 +45,9 @@ class CacheHandler(BaseHandler):
             return
 
         if isinstance(value, TelegramObject):
-            fields = getattr(value, "__slots__", ())
+            # Message.chat lives on MaybeInaccessibleMessage, not Message itself.
+            fields = {field for cls in type(value).__mro__
+                      for field in cls.__dict__.get("__slots__", ())}
             for field in fields:
                 if field.startswith("_"):
                     continue
@@ -64,5 +66,8 @@ class CacheHandler(BaseHandler):
 
     def _upsert_chats(self, chats_by_id: dict[int, Chat]) -> None:
         for chat in chats_by_id.values():
-            if self.state.get_cached_channel(chat.id) is None:
-                self.state.set_cached_channel(CachedChannel(id=chat.id))
+            cached = self.state.get_cached_channel(chat.id)
+            title = chat.title or " ".join(filter(None, (chat.first_name, chat.last_name))) or chat.username
+            channel = CachedChannel(id=chat.id, title=title or (cached.title if cached else None))
+            if cached != channel:
+                self.state.set_cached_channel(channel)

@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Literal, Optional
 
 from pydantic import AliasChoices, BaseModel, Field
@@ -27,6 +28,7 @@ class CachedUser(BaseModel):
 
 class CachedChannel(BaseModel):
     id: int
+    title: Optional[str] = None
 
 
 class MessageRevision(BaseModel):
@@ -35,10 +37,13 @@ class MessageRevision(BaseModel):
     replied_to_message: str = ""
 
 
-class MessageEditHistory(BaseModel):
+class MessageEditCounter(BaseModel):
     message_id: int
     edit_count: int = 0
     last_update_id: int = -1
+
+
+class MessageEditHistory(MessageEditCounter):
     revisions: list[MessageRevision] = Field(default_factory=list)
 
 
@@ -74,8 +79,10 @@ class BotState(BaseModel):
         default_factory=dict,
         validation_alias=AliasChoices("message_edit_histories", "first_message_histories"),
     )
+    message_edit_counters: dict[int, dict[int, MessageEditCounter]] = Field(default_factory=dict)
     __state_repo: ModelRepo = None
     __admin_provider: AdminProvider = None
+    __history_tracking: Callable[[int, int], bool] | None = None
 
     @classmethod
     def load_from_file(cls, admin_provider: AdminProvider, state_repo: ModelRepo['BotState']) -> 'BotState':
@@ -106,6 +113,8 @@ class BotState(BaseModel):
         :param chat_id: Chat id.
         """
         self.moderated_chat_ids.remove(chat_id)
+        self.message_edit_histories.pop(chat_id, None)
+        self.message_edit_counters.pop(chat_id, None)
         self.__state_repo.save(self)
 
     def migrate_moderated_chat(self, old_id: int, new_id: int) -> None:
@@ -116,6 +125,8 @@ class BotState(BaseModel):
         ))
         histories = self.message_edit_histories.pop(old_id, {})
         self.message_edit_histories.setdefault(new_id, {}).update(histories)
+        counters = self.message_edit_counters.pop(old_id, {})
+        self.message_edit_counters.setdefault(new_id, {}).update(counters)
         self.__state_repo.save(self)
 
     def set_audit_log_chat(self, chat_id: int):
@@ -209,17 +220,95 @@ class BotState(BaseModel):
 
     def trust(self, user_id: int):
         """
-        Trust subsequent messages; edits to the tracked first message are still checked.
+        Trust subsequent messages and discard saved edit context.
         :param user_id: User id.
         """
+        changed = self._discard_trusted_context(user_id)
         if user_id not in self.trusted_user_ids:
             self.trusted_user_ids.append(user_id)
+            changed = True
+        if changed:
+            self.__state_repo.save(self)
+
+    def set_message_history_tracking(self, tracked: Callable[[int, int], bool]) -> None:
+        self.__history_tracking = tracked
+        self.prune_message_edit_histories()
+
+    def _keep_message_history(self, chat_id: int, user_id: int) -> bool:
+        return not self.is_user_trusted(user_id) and self._is_message_author_tracked(chat_id, user_id)
+
+    def _is_message_author_tracked(self, chat_id: int, user_id: int) -> bool:
+        return self.__history_tracking is None or self.__history_tracking(chat_id, user_id)
+
+    def _discard_trusted_context(self, user_id: int) -> bool:
+        for chat_id, histories in self.message_edit_histories.items():
+            history = histories.get(user_id)
+            if history is not None and self._is_message_author_tracked(chat_id, user_id):
+                self.message_edit_counters.setdefault(chat_id, {})[user_id] = MessageEditCounter(
+                    message_id=history.message_id, edit_count=history.edit_count,
+                    last_update_id=history.last_update_id,
+                )
+        return self._drop_message_histories(lambda chat, user: user == user_id)
+
+    def _drop_message_histories(self, discard: Callable[[int, int], bool]) -> bool:
+        return self._drop_message_records(self.message_edit_histories, discard)
+
+    @staticmethod
+    def _drop_message_records(records: dict, discard: Callable[[int, int], bool]) -> bool:
+        changed = False
+        for chat_id, histories in list(records.items()):
+            for user_id in list(histories):
+                if discard(chat_id, user_id):
+                    del histories[user_id]
+                    changed = True
+            if not histories:
+                del records[chat_id]
+                changed = True
+        return changed
+
+    def prune_message_edit_histories(self) -> None:
+        changed = False
+        trusted_with_context = {user for histories in self.message_edit_histories.values()
+                                for user in histories if self.is_user_trusted(user)}
+        for user_id in trusted_with_context:
+            changed = self._discard_trusted_context(user_id) or changed
+        changed = self._drop_message_histories(lambda chat, user: not self._keep_message_history(chat, user)) or changed
+        changed = self._drop_message_records(
+            self.message_edit_counters, lambda chat, user: not self._is_message_author_tracked(chat, user),
+        ) or changed
+        if changed:
+            self.__state_repo.save(self)
+
+    def remove_message_edit_history(self, chat_id: int, user_id: int) -> None:
+        discard = lambda chat, user: chat == chat_id and user == user_id
+        changed = self._drop_message_histories(discard)
+        changed = self._drop_message_records(self.message_edit_counters, discard) or changed
+        if changed:
             self.__state_repo.save(self)
 
     def get_message_edit_history(self, chat_id: int, user_id: int) -> Optional[MessageEditHistory]:
-        return self.message_edit_histories.get(chat_id, {}).get(user_id)
+        if not self._is_message_author_tracked(chat_id, user_id):
+            return None
+        history = self.message_edit_histories.get(chat_id, {}).get(user_id)
+        if history is not None and not self.is_user_trusted(user_id):
+            return history
+        counter = self.message_edit_counters.get(chat_id, {}).get(user_id)
+        return MessageEditHistory(**counter.model_dump()) if counter is not None else None
 
     def save_message_edit_history(self, chat_id: int, user_id: int, history: MessageEditHistory) -> None:
+        # An in-flight filter must not recreate context after trust or a membership change.
+        if not self._is_message_author_tracked(chat_id, user_id):
+            self.remove_message_edit_history(chat_id, user_id)
+            return
+        if self.is_user_trusted(user_id):
+            self._drop_message_histories(lambda chat, user: chat == chat_id and user == user_id)
+            self.message_edit_counters.setdefault(chat_id, {})[user_id] = MessageEditCounter(
+                message_id=history.message_id, edit_count=history.edit_count,
+                last_update_id=history.last_update_id,
+            )
+            self.__state_repo.save(self)
+            return
+        self.message_edit_counters.get(chat_id, {}).pop(user_id, None)
         self.message_edit_histories.setdefault(chat_id, {})[user_id] = history
         self.__state_repo.save(self)
 
