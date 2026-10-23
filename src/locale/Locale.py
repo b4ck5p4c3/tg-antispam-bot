@@ -39,7 +39,6 @@ class Locale(BaseModel):
     help_as_service_unsubscribe: str = 'Unsubscribe from service incident notifications.'
     help_as_service_list: str = 'List subscribers to service incident notifications.'
     help_coroner_status: str = 'Show global statistics and recent errors.'
-    help_coroner_help: str = 'Show detailed Coroner help.'
     help_coroner_ref: str = 'Save a live reference account from a moderated group.'
     help_coroner_start: str = 'Verify the reference account and start checks across moderated chats.'
     help_coroner_stop: str = 'Stop checks; observation continues.'
@@ -121,22 +120,7 @@ class Locale(BaseModel):
     service_list_subscribers: str
     openai_service_unavailable: str
     openai_service_recovered: str
-    coroner_usage: str = (
-        "Coroner commands (administrators only):\n"
-        "/coroner — global statistics and recent errors.\n"
-        "/coroner help — show this help.\n"
-        "/coroner ref <ID> — save a live reference; run inside a moderated group.\n"
-        "/coroner start — verify the reference and start checks.\n"
-        "/coroner stop — stop checks; observation continues.\n"
-        "/coroner run G1|G2|G3|G4|ALL — queue checks; requires a running module.\n"
-        "/coroner detectors — anomaly detector statistics and thresholds.\n"
-        "/coroner quarantine — quarantined accounts and profile links.\n"
-        "/coroner review — review deletion candidates.\n"
-        "/coroner acknowledge — release a resolved protection incident.\n"
-        "/coroner bypass — bypass removal percentage limits for the configured duration (2 hours by default).\n"
-        "/coroner bypass stop — cancel the removal-limit bypass.\n"
-        "Commands apply across all moderated chats. Subcommands and grades ignore case."
-    )
+    coroner_usage: str = "Invalid Coroner command or arguments. Use /help to see available commands."
     coroner_group_only: str = "Use Coroner in a private chat with the bot or a moderated group or supergroup."
     coroner_ref_group_only: str = "Set the reference with /coroner ref <ID> in a moderated group where the bot can look up this account."
     coroner_stopped: str = "Coroner is stopped. Observation continues; checks require /coroner start."

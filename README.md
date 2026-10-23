@@ -103,8 +103,6 @@ Administrator commands:
   users and their oldest wait, removals in 30 days, and up to five recent errors. Available in a private chat with
   the bot or a moderated group. The **Update** button refreshes the same global summary
   by editing the message without clearing errors.
-- `/coroner help`: Show command descriptions. Other subcommands return their own
-  result or view without appending the global summary.
 - `/coroner ref <user ID>`: Save a live reference account and this chat as its lookup
   context. This stops the module and requires a subsequent start.
 - `/coroner start`: Verify the reference and start checks in all moderated chats.

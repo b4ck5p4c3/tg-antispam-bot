@@ -60,7 +60,6 @@ class CoronerCommandsHandler:
 
     @command_help(
         {'command': 'coroner', 'locale_id': 'help_coroner_status', 'admin': True},
-        {'command': 'coroner help', 'locale_id': 'help_coroner_help', 'admin': True},
         {'command': 'coroner ref <user_id>', 'locale_id': 'help_coroner_ref', 'admin': True},
         {'command': 'coroner start', 'locale_id': 'help_coroner_start', 'admin': True},
         {'command': 'coroner stop', 'locale_id': 'help_coroner_stop', 'admin': True},
@@ -99,13 +98,13 @@ class CoronerCommandsHandler:
             if action in ("detectors", "quarantine", "review") and len(args) == 1:
                 await self._protection_display(update, action, refresh_links=True)
                 return
-            valid = ((action in ("help", "start", "stop", "acknowledge") and len(args) == 1)
+            valid = ((action in ("start", "stop", "acknowledge") and len(args) == 1)
                      or (action == "bypass" and (len(args) == 1 or (len(args) == 2 and args[1].casefold() == "stop")))
                      or (action == "ref" and len(args) == 2 and args[1].isascii()
                          and args[1].isdigit() and 0 < int(args[1]) < 2 ** 52)
                      or (action == "run" and len(args) == 2
                          and args[1].upper() in ("G1", "G2", "G3", "G4", "ALL")))
-            if not valid or action == "help":
+            if not valid:
                 notice = coroner_text(update.locale, "usage")
             elif action == "acknowledge":
                 notice = coroner_text(update.locale, self.service.protection.acknowledge())

@@ -1,18 +1,5 @@
 CORONER_MESSAGES = {
-    "usage": ("Coroner commands (administrators only):\n"
-              "/coroner — global statistics and recent errors.\n"
-              "/coroner help — show this help.\n"
-              "/coroner ref <ID> — save a live reference; run inside a moderated group.\n"
-              "/coroner start — verify the reference and start checks.\n"
-              "/coroner stop — stop checks; observation continues.\n"
-              "/coroner run G1|G2|G3|G4|ALL — queue checks; requires a running module.\n"
-              "/coroner detectors — anomaly detector statistics and thresholds.\n"
-              "/coroner quarantine — quarantined accounts and profile links.\n"
-              "/coroner review — review deletion candidates.\n"
-              "/coroner acknowledge — release a resolved protection incident.\n"
-              "/coroner bypass — bypass removal percentage limits for the configured duration (2 hours by default).\n"
-              "/coroner bypass stop — cancel the removal-limit bypass.\n"
-              "Commands apply across all moderated chats. Subcommands and grades ignore case."),
+    "usage": "Invalid Coroner command or arguments. Use /help to see available commands.",
     "group_only": "Use Coroner in a private chat with the bot or a moderated group or supergroup.",
     "ref_group_only": "Set the reference with /coroner ref <ID> in a moderated group where the bot can look up this account.",
     "stopped": "Coroner is stopped. Observation continues; checks require /coroner start.",
