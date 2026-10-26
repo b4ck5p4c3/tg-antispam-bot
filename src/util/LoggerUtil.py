@@ -59,6 +59,16 @@ class LoggerUtil:
         return logger
 
     @staticmethod
+    def configure_webhook_access_logging() -> None:
+        """Filter Uvicorn access logs after its logging configuration is applied."""
+        logger = logging.getLogger("uvicorn.access")
+        if not any(
+            isinstance(log_filter, _TelegramWebhookAccessLogFilter)
+            for log_filter in logger.filters
+        ):
+            logger.addFilter(_TelegramWebhookAccessLogFilter())
+
+    @staticmethod
     def __configure_log_filters() -> None:
         root_logger = logging.getLogger()
         for handler in root_logger.handlers:

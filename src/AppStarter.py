@@ -74,6 +74,7 @@ def get_webserver(server_port: int,
             host=host
         )
     )
+    LoggerUtil.configure_webhook_access_logging()
     return webserver
 
 
