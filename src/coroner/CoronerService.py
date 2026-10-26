@@ -1001,10 +1001,10 @@ class CoronerService:
             value = t("unavailable")
             if type(total) is not int or total <= 0:
                 complete_counts = False
-            elif observed > total:
-                complete_counts = False
-                self._error(chat_id, "count-mismatch", "count_mismatch")
             else:
+                # Saved memberships can outlive a departure. Coverage is an estimate,
+                # so cap it per chat instead of treating stale links as an API failure.
+                observed = min(observed, total)
                 member_total += total
                 observed_total += observed
                 value = f"{100 * (total - observed) / total:.2f}%"

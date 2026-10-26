@@ -50,7 +50,7 @@ class LoggerUtil:
     def get_logger(name: str, prefix: str) -> logging.Logger:
         """Get logger with the given name and prefix"""
         logging.basicConfig(
-            format=LoggerUtil.get_default_format(prefix), level=logging.DEBUG
+            format=LoggerUtil.get_default_format(prefix), level=logging.INFO
         )
         LoggerUtil.__configure_log_filters()
         for logger_name, level in LoggerUtil.__LOGGER_LEVELS.items():
