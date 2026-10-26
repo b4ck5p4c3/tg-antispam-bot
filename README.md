@@ -42,15 +42,36 @@ Telegram does not provide versions from before the bot started recording them.
 - `/abandon`: Remove chat from the list of moderated chats
 - `/ban`: Ban a user from the chat by replying to their message or providing a user ID or `@username`
 - `/unban`: Unban a user by replying to a registered ban audit message, or by providing a user ID or `@username`
+- `/mute <duration> [user ID|@username]`: Mute a user in the current supergroup, or reply to their message
+- `/unmute [user ID|@username]`: Lift a mute in the current supergroup, or reply to the user's message
 - `/banc`: Restrict reposting of messages from the chat (only first message)
 - `/report`: Report spam and manage report notification subscriptions
 - `/as_service`: Manage service notification subscriptions
 - `/set_audit_log`: Set chat for [audit logging](#audit-logging)
 - `/unset_audit_log`: Unset chat for audit logging
 
+Mute commands require administrator access in the current chat and the bot's permission to restrict members.
+They set the user to read-only, disabling messages, media, polls, reactions, invites, pins, topic management,
+chat changes, and member-tag editing. `/unmute` lifts individual restrictions; the chat's default permissions
+still apply. Administrators, anonymous senders, channels, and users outside the chat cannot be muted.
+
+Durations use a positive integer and one unit: `s`/`S` (seconds), `m` (minutes), `h`/`H` (hours),
+`d`/`D` (days), `w`/`W` (weeks), `M` (30-day months), `y`/`Y` (365-day years), or `c`/`C` (100 years).
+Examples: `/mute 3h @username`, `/mute 451d 123456789`, `/mute 5S` as a reply.
+An explicit user always overrides the replied message, for both `/mute` and `/unmute`.
+Username lookup uses the saved user cache and verifies the current username before acting.
+Muting and unmuting leave permanent confirmation messages and audit entries.
+
+Durations shorter than 30 seconds are increased to 30 seconds; the confirmation and audit entry explain
+Telegram's minimum.
+Durations over one year (365 days) create a permanent restriction, while confirmations and audit entries
+show the requested duration (for example, `50 years`). Other mutes expire through Telegram, even if the bot
+is offline. No local expiry jobs or mute state are stored.
+Reaction restrictions require a Bot API server supporting `can_react_to_messages` (Bot API 10.0 or newer).
+
 ## Audit logging
 
-The bot will log all usage of the `/ban` command in the chat configured for audit logging.
+The bot logs successful `/ban`, `/mute`, and `/unmute` commands in the chat configured for audit logging.
 By default, logs are saved in the chat where the command was executed. However, you can specify a different chat for
 logging by using the `/set_audit_log` command.
 
