@@ -42,7 +42,7 @@ Telegram does not provide versions from before the bot started recording them.
 - `/abandon`: Remove chat from the list of moderated chats
 - `/ban`: Ban a user from the chat by replying to their message or providing a user ID or `@username`
 - `/unban`: Unban a user by replying to a registered ban audit message, or by providing a user ID or `@username`
-- `/mute <duration> [user ID|@username]`: Mute a user in the current supergroup, or reply to their message
+- `/mute [user ID|@username] [duration]`: Mute a user in the current supergroup, or reply to their message; duration defaults to `1d`
 - `/unmute [user ID|@username]`: Lift a mute in the current supergroup, or reply to the user's message
 - `/banc`: Restrict reposting of messages from the chat (only first message)
 - `/report`: Report spam and manage report notification subscriptions
@@ -57,7 +57,8 @@ still apply. Administrators, anonymous senders, channels, and users outside the 
 
 Durations use a positive integer and one unit: `s`/`S` (seconds), `m` (minutes), `h`/`H` (hours),
 `d`/`D` (days), `w`/`W` (weeks), `M` (30-day months), `y`/`Y` (365-day years), or `c`/`C` (100 years).
-Examples: `/mute 3h @username`, `/mute 451d 123456789`, `/mute 5S` as a reply.
+Examples: `/mute @username 3h`, `/mute 123456789 451d`, `/mute 5S` as a reply.
+When duration is omitted, `/mute @username`, `/mute 123456789`, and `/mute` as a reply mute for `1d`.
 An explicit user always overrides the replied message, for both `/mute` and `/unmute`.
 Username lookup uses the saved user cache and verifies the current username before acting.
 Muting and unmuting leave permanent confirmation messages and audit entries.

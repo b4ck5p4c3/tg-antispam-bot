@@ -23,6 +23,7 @@ DURATION_UNITS = {
     "y": 365 * 86400, "Y": 365 * 86400,
     "c": 100 * 365 * 86400, "C": 100 * 365 * 86400,
 }
+DEFAULT_MUTE_DURATION = "1d"
 
 
 def parse_mute_duration(value: str) -> int:
@@ -47,17 +48,26 @@ def mute_permissions(allowed: bool) -> ChatPermissions:
 class MuteCommandsHandler(BaseHandler):
     @admin_command
     @command_help(
-        {"command": "mute <duration>", "locale_id": "help_mute_reply"},
-        {"command": "mute <duration> <user_id|@username>", "locale_id": "help_mute_user"},
+        {"command": "mute [duration]", "locale_id": "help_mute_reply"},
+        {"command": "mute <user_id|@username> [duration]", "locale_id": "help_mute_user"},
         module="help_module_moderation",
     )
     async def handle_mute_user(self, update: EnrichedUpdate, context: CallbackContext) -> None:
         args = update.message.text.split()[1:]
-        if not 1 <= len(args) <= 2:
+        if len(args) > 2:
             await self._reply(update, context, update.locale.mute_usage)
             return
+        target = None
+        duration_arg = DEFAULT_MUTE_DURATION
+        if len(args) == 2:
+            target, duration_arg = args
+        elif args:
+            if args[0].startswith("@") or re.fullmatch(r"[0-9]+", args[0]):
+                target = args[0]
+            else:
+                duration_arg = args[0]
         try:
-            duration = parse_mute_duration(args[0])
+            duration = parse_mute_duration(duration_arg)
         except ValueError:
             await self._reply(update, context, update.locale.mute_invalid_duration)
             return
@@ -65,12 +75,12 @@ class MuteCommandsHandler(BaseHandler):
             duration_text = update.locale.mute_duration_minimum
             duration = 30
         else:
-            quantity = int(args[0][:-1])
-            unit = args[0][-1]
+            quantity = int(duration_arg[:-1])
+            unit = duration_arg[-1]
             unit = unit if unit == "M" else unit.lower()
             names = update.locale.mute_duration_units[unit]
             duration_text = f"{quantity} {names[0] if quantity == 1 else names[1]}"
-        await self._apply(update, context, args[1] if len(args) == 2 else None, duration, duration_text)
+        await self._apply(update, context, target, duration, duration_text)
 
     @admin_command
     @command_help(
