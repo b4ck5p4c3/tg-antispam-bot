@@ -31,6 +31,7 @@ class Locale(BaseModel):
     help_unban_reply: str = 'Reply to a registered ban audit entry to unban the user.'
     help_unban_id: str = 'Find bans by user ID and choose chats to unban them.'
     help_unban_username: str = 'Find bans by cached username and choose chats to unban them.'
+    help_trust_user: str = 'Add a user to trusted users in all moderated chats by ID or cached username.'
     help_mute_reply: str = 'Reply to a user message to mute its author; duration defaults to 1d.'
     help_mute_user: str = 'Mute a user in this chat; duration defaults to 1d. An explicit ID or cached username overrides the reply.'
     help_unmute_reply: str = 'Reply to a user message to lift the author\'s mute in this chat.'
@@ -67,6 +68,11 @@ class Locale(BaseModel):
     ban_success: str
     ban_username_not_found: str = "This username is not in the bot's saved user cache. Use the numeric user ID or reply to the user's message."
     ban_username_changed: str = "The username has changed. Use the numeric user ID or reply to the user's message."
+    trust_usage: str = "Use /trust <user ID|@username> with a positive user ID or @username."
+    trust_username_not_found: str = "This username is not in the bot's saved user cache. Use the numeric user ID."
+    trust_username_changed: str = "The username has changed. Use the numeric user ID."
+    trust_failed: str = "Could not verify the username. Use the numeric user ID or try again later."
+    trust_success: str = "User {user_id} is now trusted in all moderated chats."
     mute_usage: str = "Reply to a user message with /mute [duration], or use /mute <user ID|@username> [duration]. Duration defaults to 1d."
     unmute_usage: str = "Reply to a user message with /unmute, or use /unmute <user ID|@username>."
     mute_invalid_duration: str = "Use a positive integer followed by s/S, m (minutes), h/H, d/D, w/W, M (30 days), y/Y (365 days), or c/C (100 years). Examples: 3h, 451d."

@@ -41,6 +41,7 @@ Telegram does not provide versions from before the bot started recording them.
 - `/abandon`: Remove chat from the list of moderated chats
 - `/ban`: Ban a user from the chat by replying to their message or providing a user ID or `@username`
 - `/unban`: Unban a user by replying to a registered ban audit message, or by providing a user ID or `@username`
+- `/trust <user ID|@username>`: Add a user to trusted users in all moderated chats (administrators only; usernames use the saved user cache)
 - `/mute [user ID|@username] [duration]`: Mute a user in the current supergroup, or reply to their message; duration defaults to `1d`
 - `/unmute [user ID|@username]`: Lift a mute in the current supergroup, or reply to the user's message
 - `/banc`: Restrict reposting of messages from the chat (only first message)

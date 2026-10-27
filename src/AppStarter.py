@@ -17,6 +17,7 @@ from src.handlers.ManualModerationCommandsHandler import ManualModerationCommand
 from src.handlers.MuteCommandsHandler import MuteCommandsHandler
 from src.handlers.ReportCommandsHandler import ReportCommandsHandler
 from src.handlers.ServiceNotificationsHandler import ServiceNotificationsHandler
+from src.handlers.TrustCommandsHandler import TrustCommandsHandler
 from src.handlers.UnbanCommandsHandler import UnbanCommandsHandler
 from src.handlers.spam_filters.FilterFactory import FilterFactory
 from src.handlers.spam_filters.SpamFilter import SpamFilter
@@ -129,6 +130,7 @@ class BotBuilder:
         manual_commands_handler: ManualModerationCommandsHandler = ManualModerationCommandsHandler(state)
         report_commands_handler: ReportCommandsHandler = ReportCommandsHandler(state)
         unban_commands_handler = UnbanCommandsHandler(state)
+        trust_commands_handler = TrustCommandsHandler(state)
         mute_commands_handler = MuteCommandsHandler(state)
         cache_handler: CacheHandler = CacheHandler(state)
         button_click_handler: ButtonClickHandler = ButtonClickHandler(state)
@@ -151,6 +153,7 @@ class BotBuilder:
         self.__add_command_handler("unset_audit_log", configuration_commands_handler.unset_channel_as_audit_log)
         self.__add_command_handler("ban", manual_commands_handler.handle_ban_user)
         self.__add_command_handler("unban", unban_commands_handler.handle_unban_user)
+        self.__add_command_handler("trust", trust_commands_handler.handle_trust_user)
         self.__add_command_handler("mute", mute_commands_handler.handle_mute_user)
         self.__add_command_handler("unmute", mute_commands_handler.handle_unmute_user)
         self.__add_command_handler("banc", manual_commands_handler.handle_ban_community)
