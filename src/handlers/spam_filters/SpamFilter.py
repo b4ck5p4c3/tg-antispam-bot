@@ -58,13 +58,12 @@ class SpamFilter:
         if self.telegram_helper.is_message_from_anonymous_admin(update.effective_message):
             return "message was sent by an anonymous admin"
         if sender_user_id is not None:
+            if self.state.is_user_trusted(sender_user_id):
+                return f"user {sender_user_id} is trusted"
             history = self.state.get_message_edit_history(update.effective_message.chat_id, sender_user_id)
             is_tracked_message = history is not None and history.message_id == update.effective_message.id
             if is_tracked_message and update.update_id == history.last_update_id:
                 return "tracked message update was already processed"
-            check_edit = update.edited_message is not None and (history is None or is_tracked_message)
-            if self.state.is_user_trusted(sender_user_id) and not check_edit:
-                return f"user {sender_user_id} is trusted"
         if not self.state.is_chat_moderated(update.effective_message.chat_id):
             return f"chat {update.effective_message.chat_id} is not moderated"
         if sender_user_id is not None and await self.state.is_admin(sender_user_id, update.effective_chat.id):

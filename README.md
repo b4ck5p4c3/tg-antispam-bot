@@ -13,8 +13,8 @@ The bot uses a chain of spam filters to evaluate each incoming message. These fi
 more complex AI-driven analyses. If a message is identified as spam, the bot can take actions such as deleting the
 message or banning the user
 
-The first checked message from each user in each chat remains monitored after the user becomes trusted.
-Every edit is checked again. While the user is tracked by Coroner and is not trusted,
+Trusted users are exempt from all spam checks, including checks of edited messages.
+While the user is tracked by Coroner and is not trusted,
 recorded earlier versions (text/caption, OCR transcription, and reply context) are included in the AI request.
 Saved context is discarded when the user becomes trusted or leaves Coroner monitoring.
 Trusted users retain only the message ID and edit counters, without earlier message contents.
@@ -24,7 +24,6 @@ Admins, anonymous admins, linked-channel automatic forwards, and chats without m
 Set `max_message_edits` in `data/openai_config.json` to change the edit limit (default: `10`; minimum: `0`).
 Edits 1–10 are checked normally; edit 11 deletes the message and bans its author immediately, before OCR or any
 external spam checks. Restart the bot after changing the configuration.
-For users already trusted before edit counting was enabled, the first observed edit starts counting that message.
 Telegram does not provide versions from before the bot started recording them.
 
 ## How to run it without B4CKSP4CE infrastructure
