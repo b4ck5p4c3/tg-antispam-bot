@@ -33,7 +33,12 @@ class Locale(BaseModel):
     help_unban_username: str = 'Find bans by cached username and choose chats to unban them.'
     help_trust_user: str = 'Add a user to trusted users in all moderated chats by ID or cached username.'
     help_mute_reply: str = 'Reply to a user message to mute its author; duration defaults to 1d.'
-    help_mute_user: str = 'Mute a user in this chat; duration defaults to 1d. An explicit ID or cached username overrides the reply.'
+    help_mute_user: str = (
+        'Mute a user in this chat; default: 1d. An explicit ID or cached username overrides the reply.\n'
+        'Duration: positive integer + unit. s/S = seconds, m = minutes, h/H = hours, '
+        'd/D = days, w/W = weeks, M = months (30 days), y/Y = years (365 days), '
+        'c/C = centuries (100 years). Examples: 30s, 3h, 7d.'
+    )
     help_unmute_reply: str = 'Reply to a user message to lift the author\'s mute in this chat.'
     help_unmute_user: str = 'Unmute a user in this chat; an explicit ID or cached username overrides the reply.'
     help_report: str = 'Reply to a spam message to notify subscribed administrators.'
